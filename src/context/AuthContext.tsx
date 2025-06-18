@@ -1,13 +1,13 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/lib/supabase';
+import { internalLogin, getMasterUsername } from './InternalAuth';
 
 interface AuthContextType {
   isLoggedIn: boolean;
   currentUsername: string | null;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>; // agora login local
   logout: () => Promise<void>;
-  createUser: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  // createUser removido para login local
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,84 +20,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Verificar sessão atual ao carregar
   useEffect(() => {
     const checkSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (data.session) {
-        setIsLoggedIn(true);
-        // Extrair username dos metadados do usuário
-        const username = data.session.user.user_metadata?.username || null;
-        setCurrentUsername(username);
-      }
+      // Para login local, não há sessão persistida
+      setIsLoggedIn(false);
+      setCurrentUsername(null);
     };
     
     checkSession();
     
     // Monitorar mudanças na autenticação
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      setIsLoggedIn(!!session);
-      setCurrentUsername(session?.user?.user_metadata?.username || null);
-    });
-    
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
+    // Não há listener de autenticação para login local
   }, []);
 
   const login = async (username: string, password: string) => {
-    try {
-      // Como o Supabase usa email, usaremos username@example.com como padrão
-      const email = `${username.toLowerCase()}@admin.local`;
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) throw error;
-      
+    if (internalLogin(username, password)) {
       setIsLoggedIn(true);
       setCurrentUsername(username);
       return { success: true };
-    } catch (error: any) {
-      console.error('Erro ao fazer login:', error);
+    } else {
       return { success: false, error: 'Nome de usuário ou senha inválidos' };
     }
   };
 
   const logout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setIsLoggedIn(false);
-      setCurrentUsername(null);
-      navigate('/');
-    } catch (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
+    setIsLoggedIn(false);
+    setCurrentUsername(null);
+    navigate('/');
   };
   
-  const createUser = async (username: string, password: string) => {
-    try {
-      // Como o Supabase precisa de email, usaremos username@example.com como padrão
-      const email = `${username.toLowerCase()}@admin.local`;
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            username: username, // Armazenar o nome de usuário nos metadados
-          }
-        }
-      });
-      
-      if (error) throw error;
-      
-      return { success: true };
-    } catch (error: any) {
-      console.error('Erro ao criar usuário:', error);
-      return { success: false, error: error.message };
-    }
-  };
+  // createUser removido para login local
 
   return (
     <AuthContext.Provider
@@ -105,8 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoggedIn,
         currentUsername,
         login,
-        logout,
-        createUser
+        logout
       }}
     >
       {children}

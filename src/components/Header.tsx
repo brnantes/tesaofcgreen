@@ -1,17 +1,18 @@
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AnimatedTabs } from './ui/animated-tabs';
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const navItems = [
-    { name: 'Início', href: '/' },
-    { name: 'Torneios', href: '#tournaments' },
-    { name: 'Hall da Fama', href: '#hall-of-fame' },
-    { name: 'Cardápio', href: '/menu' },
-    { name: 'Contato', href: '#contact' },
+    { name: 'Início', href: '/', active: true },
+    { name: 'Torneios', href: '#tournaments', active: false },
+    { name: 'Hall da Fama', href: '#hall-of-fame', active: false },
+    { name: 'Cardápio', href: '/menu', active: false },
+    { name: 'Contato', href: '#contact', active: false },
   ];
 
   return (
@@ -26,17 +27,15 @@ const Header = () => {
             />
           </div>
           
-          <nav className="hidden md:flex space-x-8">
-            {navItems.map((item) => (
-              <a
-                key={item.name}
-                href={item.href}
-                className="text-white hover:text-green-primary transition-colors duration-300"
-              >
-                {item.name}
-              </a>
-            ))}
-          </nav>
+          <div className="hidden md:block">
+            <AnimatedTabs
+              tabs={navItems.map(item => ({
+                label: item.name,
+                href: item.href
+              }))}
+              className="bg-transparent border-none"
+            />
+          </div>
 
           {/* Botões de login e cadastro removidos conforme solicitado */}
 

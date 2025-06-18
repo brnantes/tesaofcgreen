@@ -1,7 +1,5 @@
-
 import { useState, useMemo } from 'react';
 import Header from '@/components/Header';
-import Footer from '@/components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useMenuItems } from '@/hooks/useMenuItems';
@@ -84,7 +82,6 @@ const Menu = () => {
             </div>
           </div>
         </main>
-        <Footer />
       </div>
     );
   }
@@ -205,8 +202,6 @@ const Menu = () => {
           </div>
         </section>
       </main>
-      
-      <Footer />
       
     </div>
   );

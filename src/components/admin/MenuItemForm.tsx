@@ -1,13 +1,26 @@
-
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { useMenuItems } from '@/hooks/useMenuItems';
 import { MenuItem } from '@/types/database';
-import { Upload, X } from 'lucide-react';
+import { 
+  Upload, 
+  X, 
+  ChefHat, 
+  DollarSign, 
+  ImageIcon, 
+  Check, 
+  AlertCircle, 
+  Loader2,
+  Camera,
+  FileImage
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '@/hooks/use-toast';
 
 interface MenuItemFormProps {
   item?: MenuItem | null;
@@ -15,19 +28,38 @@ interface MenuItemFormProps {
   onClose: () => void;
 }
 
+interface FormErrors {
+  name?: string;
+  description?: string;
+  price?: string;
+  image_url?: string;
+  category?: string;
+}
+
+const CATEGORIES = [
+  { value: 'Lanches', label: 'Lanches', color: 'bg-orange-500/20 text-orange-400', icon: '🍔' },
+  { value: 'Bebidas', label: 'Bebidas', color: 'bg-blue-500/20 text-blue-400', icon: '🥤' },
+  { value: 'Pratos Principais', label: 'Pratos Principais', color: 'bg-green-500/20 text-green-400', icon: '🍽️' },
+  { value: 'Sobremesas', label: 'Sobremesas', color: 'bg-pink-500/20 text-pink-400', icon: '🍰' },
+  { value: 'Aperitivos', label: 'Aperitivos', color: 'bg-purple-500/20 text-purple-400', icon: '🥨' },
+];
+
 export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
   const { addMenuItem, updateMenuItem } = useMenuItems();
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
     image_url: '',
-    category: 'Porções',
+    category: 'Lanches',
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>('');
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isDragOver, setIsDragOver] = useState(false);
 
   useEffect(() => {
     if (item) {
@@ -37,7 +69,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
         description: item.description || '',
         price: item.price || '',
         image_url: item.image_url || '',
-        category: item.category || 'Porções',
+        category: item.category || 'Lanches',
       });
       setImagePreview(item.image_url || '');
     } else {
@@ -47,23 +79,38 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
         description: '',
         price: '',
         image_url: '',
-        category: 'Porções',
+        category: 'Lanches',
       });
       setImagePreview('');
     }
     setImageFile(null);
+    setErrors({});
   }, [item, open]);
 
+  const validateField = (field: string, value: string): string | undefined => {
+    switch (field) {
+      case 'name':
+        if (!value.trim()) return 'Nome é obrigatório';
+        if (value.length < 3) return 'Nome deve ter pelo menos 3 caracteres';
+        break;
+      case 'description':
+        if (!value.trim()) return 'Descrição é obrigatória';
+        if (value.length < 10) return 'Descrição deve ter pelo menos 10 caracteres';
+        break;
+      case 'price':
+        if (!value.trim()) return 'Preço é obrigatório';
+        break;
+      case 'category':
+        if (!value.trim()) return 'Categoria é obrigatória';
+        break;
+    }
+    return undefined;
+  };
+
   const formatCurrency = (value: string) => {
-    // Remove tudo que não é número
     const numericValue = value.replace(/\D/g, '');
-    
     if (!numericValue) return '';
-    
-    // Converte para número e divide por 100 para ter os centavos
     const number = parseInt(numericValue) / 100;
-    
-    // Formata como moeda brasileira
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
@@ -74,6 +121,9 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
   const handlePriceChange = (value: string) => {
     const formattedPrice = formatCurrency(value);
     setFormData(prev => ({ ...prev, price: formattedPrice }));
+    
+    const error = validateField('price', formattedPrice);
+    setErrors(prev => ({ ...prev, price: error }));
   };
 
   const handleImageUpload = async (file: File) => {
@@ -101,7 +151,6 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
 
       console.log('Upload concluído:', data);
 
-      // Obter URL pública da imagem
       const { data: publicData } = supabase.storage
         .from('menu-images')
         .getPublicUrl(filePath);
@@ -112,41 +161,75 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
       setFormData(prev => ({ ...prev, image_url: imageUrl }));
       setImagePreview(imageUrl);
       
+      toast({
+        title: "Upload concluído",
+        description: "Imagem enviada com sucesso!",
+      });
+      
       return imageUrl;
     } catch (error) {
       console.error('Erro ao fazer upload da imagem:', error);
-      alert('Erro ao fazer upload da imagem. Tente novamente.');
+      toast({
+        title: "Erro no upload",
+        description: "Não foi possível enviar a imagem. Tente novamente.",
+        variant: "destructive",
+      });
       throw error;
     } finally {
       setUploading(false);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      console.log('Arquivo selecionado:', file.name, file.type, file.size);
-      
-      // Validar tipo de arquivo
-      if (!file.type.startsWith('image/')) {
-        alert('Por favor, selecione apenas arquivos de imagem.');
-        return;
-      }
-      
-      // Validar tamanho (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        alert('A imagem deve ter no máximo 10MB.');
-        return;
-      }
-      
-      setImageFile(file);
-      
-      // Criar preview local
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handleFileSelect = (file: File) => {
+    console.log('Arquivo selecionado:', file.name, file.type, file.size);
+    
+    // Validar tipo de arquivo
+    if (!file.type.startsWith('image/')) {
+      toast({
+        title: "Arquivo inválido",
+        description: "Por favor, selecione apenas arquivos de imagem.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    // Validar tamanho (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "A imagem deve ter no máximo 10MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setImageFile(file);
+    
+    // Criar preview local
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
     }
   };
 
@@ -155,22 +238,26 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
     
     console.log('Submetendo formulário:', formData);
     
-    // Validação básica
-    if (!formData.name.trim()) {
-      console.log('Nome é obrigatório');
-      alert('Nome é obrigatório');
-      return;
+    // Validar todos os campos
+    const newErrors: FormErrors = {};
+    Object.keys(formData).forEach(field => {
+      const error = validateField(field, formData[field as keyof typeof formData]);
+      if (error) newErrors[field as keyof FormErrors] = error;
+    });
+
+    // Validar imagem
+    if (!imagePreview && !formData.image_url) {
+      newErrors.image_url = 'Imagem é obrigatória';
     }
-    
-    if (!formData.description.trim()) {
-      console.log('Descrição é obrigatória');
-      alert('Descrição é obrigatória');
-      return;
-    }
-    
-    if (!formData.price.trim()) {
-      console.log('Preço é obrigatório');
-      alert('Preço é obrigatório');
+
+    setErrors(newErrors);
+
+    if (Object.keys(newErrors).length > 0) {
+      toast({
+        title: "Formulário inválido",
+        description: "Por favor, corrija os erros antes de continuar.",
+        variant: "destructive",
+      });
       return;
     }
     
@@ -185,29 +272,31 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
         imageUrl = await handleImageUpload(imageFile);
       }
       
-      // Se ainda não tem imagem, validar
-      if (!imageUrl.trim()) {
-        console.log('Imagem é obrigatória');
-        alert('Por favor, selecione uma imagem para o item');
-        setLoading(false);
-        return;
-      }
-      
       const dataToSubmit = { ...formData, image_url: imageUrl };
       
       if (item) {
         console.log('Atualizando item existente:', item.id);
-        const result = await updateMenuItem(item.id, dataToSubmit);
-        console.log('Item atualizado com sucesso:', result);
+        await updateMenuItem(item.id, dataToSubmit);
+        toast({
+          title: "Item atualizado",
+          description: `${formData.name} foi atualizado com sucesso!`,
+        });
       } else {
         console.log('Criando novo item');
-        const result = await addMenuItem(dataToSubmit);
-        console.log('Item criado com sucesso:', result);
+        await addMenuItem(dataToSubmit);
+        toast({
+          title: "Item criado",
+          description: `${formData.name} foi adicionado ao cardápio!`,
+        });
       }
       onClose();
     } catch (error) {
       console.error('Erro ao salvar item:', error);
-      alert('Erro ao salvar item. Tente novamente.');
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar o item. Tente novamente.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -220,6 +309,10 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
       handlePriceChange(value);
     } else {
       setFormData(prev => ({ ...prev, [field]: value }));
+      
+      // Validar campo em tempo real
+      const error = validateField(field, value);
+      setErrors(prev => ({ ...prev, [field]: error }));
     }
   };
 
@@ -227,149 +320,305 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
     setImagePreview('');
     setImageFile(null);
     setFormData(prev => ({ ...prev, image_url: '' }));
+    setErrors(prev => ({ ...prev, image_url: 'Imagem é obrigatória' }));
   };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="bg-poker-gray-medium border-poker-gold/20 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="bg-poker-gray-medium border-poker-gold/20 text-white max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-poker-gold">
-            {item ? 'Editar Item' : 'Adicionar Item'}
+          <DialogTitle className="text-poker-gold flex items-center gap-2 text-xl">
+            <ChefHat className="w-6 h-6" />
+            {item ? 'Editar Item do Cardápio' : 'Adicionar Novo Item'}
           </DialogTitle>
         </DialogHeader>
         
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-white">Categoria *</label>
-              <select 
-                value={formData.category}
-                onChange={(e) => handleChange('category', e.target.value)}
-                className="w-full p-2 bg-poker-black border border-poker-gold/30 rounded text-white focus:border-poker-gold focus:outline-none"
-                required
-              >
-                <option value="Porções">Porções</option>
-                <option value="Drinks">Drinks</option>
-                <option value="Combos">Combos</option>
-                <option value="Premium">Premium</option>
-                <option value="Principais">Principais</option>
-              </select>
+        <motion.form 
+          onSubmit={handleSubmit} 
+          className="space-y-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          {/* Categoria */}
+          <div>
+            <label className="block text-sm font-medium mb-3 text-white flex items-center gap-2">
+              <Badge variant="secondary" className="bg-poker-gold/20 text-poker-gold">
+                Categoria *
+              </Badge>
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {CATEGORIES.map((category) => (
+                <motion.div
+                  key={category.value}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleChange('category', category.value)}
+                    className={`w-full p-3 rounded-lg border transition-all duration-300 text-sm font-medium ${
+                      formData.category === category.value
+                        ? 'border-poker-gold bg-poker-gold/20 text-poker-gold'
+                        : 'border-poker-gold/30 bg-poker-black/50 text-gray-300 hover:border-poker-gold/50'
+                    }`}
+                  >
+                    <div className="text-lg mb-1">{category.icon}</div>
+                    <div>{category.label}</div>
+                  </button>
+                </motion.div>
+              ))}
             </div>
+            {errors.category && (
+              <motion.p 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-red-400 text-sm mt-1 flex items-center gap-1"
+              >
+                <AlertCircle className="w-3 h-3" />
+                {errors.category}
+              </motion.p>
+            )}
+          </div>
+
+          {/* Nome e Preço */}
+          <div className="grid md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-2 text-white">Nome do Item *</label>
               <Input 
                 value={formData.name}
                 onChange={(e) => handleChange('name', e.target.value)}
-                placeholder="Ex: Porção de Batata Frita"
-                className="bg-poker-black border-poker-gold/30 text-white focus:border-poker-gold"
+                placeholder="Ex: Hambúrguer Artesanal"
+                className={`bg-poker-black border transition-all duration-300 text-white focus:ring-2 focus:ring-poker-gold/50 ${
+                  errors.name ? 'border-red-500' : 'border-poker-gold/30 focus:border-poker-gold'
+                }`}
                 required
               />
+              <AnimatePresence>
+                {errors.name && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="text-red-400 text-sm mt-1 flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-3 h-3" />
+                    {errors.name}
+                  </motion.p>
+                )}
+                {!errors.name && formData.name.length >= 3 && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-green-400 text-sm mt-1 flex items-center gap-1"
+                  >
+                    <Check className="w-3 h-3" />
+                    Nome válido
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2 text-white flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-poker-gold" />
+                Preço *
+              </label>
+              <Input 
+                value={formData.price}
+                onChange={(e) => handleChange('price', e.target.value)}
+                placeholder="R$ 0,00"
+                className={`bg-poker-black border transition-all duration-300 text-white focus:ring-2 focus:ring-poker-gold/50 ${
+                  errors.price ? 'border-red-500' : 'border-poker-gold/30 focus:border-poker-gold'
+                }`}
+                required
+              />
+              {errors.price && (
+                <motion.p 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-red-400 text-sm mt-1 flex items-center gap-1"
+                >
+                  <AlertCircle className="w-3 h-3" />
+                  {errors.price}
+                </motion.p>
+              )}
             </div>
           </div>
           
+          {/* Descrição */}
           <div>
             <label className="block text-sm font-medium mb-2 text-white">Descrição *</label>
             <Textarea 
               value={formData.description}
               onChange={(e) => handleChange('description', e.target.value)}
-              placeholder="Descrição do item..."
-              className="bg-poker-black border-poker-gold/30 text-white focus:border-poker-gold"
+              placeholder="Descreva os ingredientes e características do item..."
+              className={`bg-poker-black border transition-all duration-300 text-white focus:ring-2 focus:ring-poker-gold/50 ${
+                errors.description ? 'border-red-500' : 'border-poker-gold/30 focus:border-poker-gold'
+              }`}
               rows={3}
               required
             />
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2 text-white">Preço *</label>
-              <Input 
-                value={formData.price}
-                onChange={(e) => handleChange('price', e.target.value)}
-                placeholder="R$ 0,00"
-                className="bg-poker-black border-poker-gold/30 text-white focus:border-poker-gold"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2 text-white">URL da Imagem</label>
-              <Input 
-                value={formData.image_url}
-                onChange={(e) => handleChange('image_url', e.target.value)}
-                placeholder="https://... ou faça upload abaixo"
-                className="bg-poker-black border-poker-gold/30 text-white focus:border-poker-gold"
-              />
+            <div className="flex items-center justify-between mt-1">
+              <AnimatePresence>
+                {errors.description && (
+                  <motion.p 
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="text-red-400 text-sm flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-3 h-3" />
+                    {errors.description}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+              <span className={`text-xs ${
+                formData.description.length < 10 ? 'text-gray-500' : 'text-green-400'
+              }`}>
+                {formData.description.length}/250
+              </span>
             </div>
           </div>
           
+          {/* Upload de Imagem */}
           <div>
-            <label className="block text-sm font-medium mb-2 text-white">Upload de Imagem *</label>
-            <div className="border-2 border-dashed border-poker-gold/30 rounded-lg p-6">
+            <label className="block text-sm font-medium mb-3 text-white flex items-center gap-2">
+              <Camera className="w-4 h-4 text-poker-gold" />
+              Imagem do Item *
+            </label>
+            
+            <motion.div 
+              className={`border-2 border-dashed rounded-xl p-8 transition-all duration-300 ${
+                isDragOver 
+                  ? 'border-poker-gold bg-poker-gold/10' 
+                  : errors.image_url
+                  ? 'border-red-500 bg-red-500/5'
+                  : 'border-poker-gold/30 hover:border-poker-gold/50 hover:bg-poker-gold/5'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              whileHover={{ scale: 1.02 }}
+              transition={{ duration: 0.2 }}
+            >
               <input
                 type="file"
                 accept="image/*"
-                onChange={handleFileSelect}
+                onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
                 className="hidden"
                 id="image-upload"
                 disabled={uploading}
               />
               <label
                 htmlFor="image-upload"
-                className="flex flex-col items-center justify-center cursor-pointer hover:bg-poker-gold/10 rounded p-4 transition-colors"
+                className="flex flex-col items-center justify-center cursor-pointer"
               >
-                <Upload className="w-8 h-8 text-poker-gold mb-2" />
-                <span className="text-poker-gold text-sm font-medium">
-                  {uploading ? 'Fazendo upload...' : 'Clique para selecionar imagem'}
-                </span>
-                <span className="text-gray-400 text-xs mt-1">
-                  PNG, JPG, WEBP até 10MB
-                </span>
+                {uploading ? (
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Loader2 className="w-12 h-12 text-poker-gold mb-4" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    whileHover={{ scale: 1.1 }}
+                    className="flex flex-col items-center"
+                  >
+                    <FileImage className="w-12 h-12 text-poker-gold mb-4" />
+                    <span className="text-poker-gold text-lg font-medium mb-2">
+                      Arraste uma imagem ou clique aqui
+                    </span>
+                    <span className="text-gray-400 text-sm">
+                      PNG, JPG, WEBP até 10MB
+                    </span>
+                  </motion.div>
+                )}
               </label>
-            </div>
+            </motion.div>
+            
+            {errors.image_url && (
+              <motion.p 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-red-400 text-sm mt-2 flex items-center gap-1"
+              >
+                <AlertCircle className="w-3 h-3" />
+                {errors.image_url}
+              </motion.p>
+            )}
           </div>
           
-          {imagePreview && (
-            <div>
-              <label className="block text-sm font-medium mb-2 text-white">Preview da Imagem</label>
-              <div className="relative w-32 h-32 border border-poker-gold/30 rounded overflow-hidden">
-                <img 
-                  src={imagePreview} 
-                  alt="Preview"
-                  className="w-full h-full object-cover"
-                  onError={(e) => {
-                    console.log('Erro ao carregar imagem preview:', imagePreview);
-                    e.currentTarget.src = '/placeholder.svg';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={removeImagePreview}
-                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 hover:bg-red-600 transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
-          )}
+          {/* Preview da Imagem */}
+          <AnimatePresence>
+            {imagePreview && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="space-y-2"
+              >
+                <label className="block text-sm font-medium text-white">Preview</label>
+                <div className="relative w-40 h-40 border border-poker-gold/30 rounded-xl overflow-hidden group">
+                  <img 
+                    src={imagePreview} 
+                    alt="Preview"
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
+                    onError={(e) => {
+                      console.log('Erro ao carregar imagem preview:', imagePreview);
+                      e.currentTarget.src = '/placeholder.svg';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                    <motion.button
+                      type="button"
+                      onClick={removeImagePreview}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      className="bg-red-500 text-white rounded-full p-2 hover:bg-red-600 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                    </motion.button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           
-          <div className="flex gap-2 pt-4 border-t border-poker-gold/20">
-            <Button 
-              type="submit"
-              disabled={loading || uploading}
-              className="bg-poker-gold text-poker-black hover:bg-poker-gold-light disabled:opacity-50"
-            >
-              {loading ? 'Salvando...' : uploading ? 'Fazendo upload...' : (item ? 'Atualizar' : 'Adicionar')}
-            </Button>
-            <Button 
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              disabled={loading || uploading}
-              className="border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10"
-            >
-              Cancelar
-            </Button>
+          {/* Botões */}
+          <div className="flex gap-3 pt-6 border-t border-poker-gold/20">
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} className="flex-1">
+              <Button 
+                type="submit"
+                disabled={loading || uploading}
+                className="w-full bg-poker-gold text-poker-black hover:bg-poker-gold-light disabled:opacity-50 font-semibold py-3"
+              >
+                {loading || uploading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {uploading ? 'Enviando imagem...' : 'Salvando...'}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    {item ? 'Atualizar Item' : 'Adicionar Item'}
+                  </div>
+                )}
+              </Button>
+            </motion.div>
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button 
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={loading || uploading}
+                className="border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10 px-6"
+              >
+                Cancelar
+              </Button>
+            </motion.div>
           </div>
-        </form>
+        </motion.form>
       </DialogContent>
     </Dialog>
   );

@@ -1,13 +1,15 @@
-
 export interface Tournament {
   id: string;
   name: string;
-  date: string;
+  date?: string; // Opcional para manter compatibilidade
+  day_of_week?: number; // 0 = Domingo, 1 = Segunda, etc.
   time: string;
   buy_in: string;
   prize: string;
   max_players: number;
-  special_features?: string;
+  description?: string;
+  is_guaranteed?: boolean;
+  special_features?: string; // Mantido para compatibilidade
   created_at: string;
   updated_at: string;
 }
