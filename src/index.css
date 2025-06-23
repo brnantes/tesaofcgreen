@@ -1,0 +1,92 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 10 10% 4%;
+    --foreground: 0 0% 98%;
+
+    --card: 10 10% 8%;
+    --card-foreground: 0 0% 98%;
+
+    --popover: 10 10% 8%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 158 64% 52%;
+    --primary-foreground: 0 0% 2%;
+
+    --secondary: 10 10% 12%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 10 10% 12%;
+    --muted-foreground: 0 0% 63%;
+
+    --accent: 10 10% 16%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 74% 42%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 10 10% 16%;
+    --input: 10 10% 16%;
+    --ring: 158 64% 52%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 10 10% 6%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 158 64% 52%;
+    --sidebar-primary-foreground: 0 0% 2%;
+    --sidebar-accent: 10 10% 12%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 10 10% 16%;
+    --sidebar-ring: 158 64% 52%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-green-black text-foreground font-inter;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-inter;
+  }
+}
+
+@layer components {
+  .gradient-text {
+    @apply bg-gradient-to-r from-green-primary via-green-light to-green-primary bg-clip-text text-transparent animate-pulse;
+  }
+  
+  .card-hover {
+    @apply transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-green-primary/20 hover:border-green-primary/40;
+  }
+
+  .interactive-element {
+    @apply transition-all duration-300 hover:scale-110 active:scale-95 cursor-pointer;
+  }
+
+  .glow-effect {
+    @apply shadow-lg shadow-green-primary/30 hover:shadow-2xl hover:shadow-green-primary/50 transition-shadow duration-300;
+  }
+  
+  .animate-pulse-slow {
+    animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
