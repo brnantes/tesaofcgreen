@@ -25,6 +25,26 @@ const ImagesSection = () => {
     menu_background: '',
     gastronomy_image: ''
   });
+  
+  // Inicializar formData com as imagens existentes do site
+  useEffect(() => {
+    if (imagesList.length > 0) {
+      console.log('Inicializando formData com imagens existentes');
+      const newFormData = { ...formData };
+      
+      // Para cada tipo de imagem, buscar a URL correspondente
+      Object.keys(formData).forEach(imageType => {
+        const siteImage = imagesList.find(img => img.type === imageType);
+        if (siteImage?.image_url) {
+          console.log(`Encontrada imagem para ${imageType}:`, siteImage.image_url);
+          newFormData[imageType] = siteImage.image_url;
+        }
+      });
+      
+      console.log('FormData inicializado:', newFormData);
+      setFormData(newFormData);
+    }
+  }, [imagesList]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [heroBannerModalOpen, setHeroBannerModalOpen] = useState(false);
@@ -120,57 +140,80 @@ const ImagesSection = () => {
   
   // Filtragem de imagens com base na busca e no filtro selecionado
   const filteredImages = useMemo(() => {
-    let filtered = [...availableImages];
+    // Filtrar imagens inválidas primeiro (URLs vazias ou que não começam com http)
+    let filtered = availableImages.filter(url => {
+      return url && url.trim() !== '' && url.startsWith('http');
+    });
     
     // Aplicar filtro de busca
     if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(imgUrl => {
-        // Extrair o nome do arquivo da URL completa
-        const parts = imgUrl.split('/');
-        const filename = parts[parts.length - 1].toLowerCase();
-        return filename.includes(query);
+      filtered = filtered.filter(url => {
+        // Extrair o nome do arquivo da URL
+        const fileName = url.split('/').pop()?.toLowerCase() || '';
+        return fileName.includes(query);
       });
     }
     
-    // Aplicar filtro de tipo
+    // Aplicar filtro por tipo
     if (selectedFilter) {
-      // Aqui poderíamos filtrar por tipo se tivéssemos metadados das imagens
-      // Por enquanto, vamos simular isso com base nos nomes dos arquivos
-      const filterKeywords: Record<string, string[]> = {
-        'hero_background': ['hero', 'background'],
-        'about_image': ['about', 'restaurant'],
-        'contact_background': ['contact', 'background'],
-        'tournaments_background': ['tournament', 'poker', 'cards', 'chips'],
-        'menu_background': ['menu', 'food', 'burger', 'hamburger'],
+      // Mapeamento de tipos de imagem para termos de busca relacionados
+      const typeKeywords: Record<string, string[]> = {
+        'hero_background': ['hero', 'banner', 'header', 'background'],
+        'about_image': ['about', 'sobre', 'quem somos'],
+        'contact_background': ['contact', 'contato', 'fale conosco'],
+        'tournaments_background': ['tournament', 'torneio', 'competicao', 'competition'],
+        'menu_background': ['menu', 'cardapio', 'food', 'comida'],
         'gastronomy_image': ['gastronomy', 'food', 'burger', 'hamburger']
       };
       
-      const keywords = filterKeywords[selectedFilter] || [];
-      if (keywords.length) {
-        filtered = filtered.filter(imgUrl => {
-          // Extrair o nome do arquivo da URL completa
-          const parts = imgUrl.split('/');
-          const filename = parts[parts.length - 1].toLowerCase();
-          return keywords.some(keyword => filename.includes(keyword));
-        });
-      }
+      // Obter palavras-chave para o tipo selecionado
+      const keywords = typeKeywords[selectedFilter] || [];
+      
+      filtered = filtered.filter(url => {
+        // Extrair o nome do arquivo da URL
+        const fileName = url.split('/').pop()?.toLowerCase() || '';
+        // Verificar se o nome do arquivo contém alguma das palavras-chave
+        return keywords.some(keyword => fileName.includes(keyword));
+      });
     }
     
+    console.log(`Filtradas ${filtered.length} imagens válidas de ${availableImages.length} disponíveis`);
     return filtered;
   }, [availableImages, searchQuery, selectedFilter]);
 
   const handleSave = async (imageType: string) => {
     setSaving(true);
     try {
+      console.log(`Salvando imagem para a seção ${imageType}...`);
       // Se estamos usando uma imagem da galeria, usamos o selectedImage
       // Caso contrário, usamos a URL do formulário
       const imageUrl = selectedImage || formData[imageType];
+      
+      if (!imageUrl) {
+        console.error(`URL da imagem não definida para ${imageType}`);
+        toast.error("URL da imagem não definida.");
+        return;
+      }
+      
+      console.log(`Salvando imagem para ${imageType} com URL:`, imageUrl);
       await saveImage(imageType, imageUrl);
+      
+      // Atualizar o formData após salvar
+      setFormData(prev => ({
+        ...prev,
+        [imageType]: imageUrl
+      }));
+      
       // Limpar a seleção após salvar
       setSelectedImage(null);
+      
+      // Mostrar mensagem de sucesso com o nome amigável da seção
+      const typeName = imageTypes.find(t => t.key === imageType)?.label || imageType;
+      toast.success(`Imagem aplicada com sucesso à seção ${typeName}!`);
     } catch (error) {
       console.error('Erro ao salvar imagem:', error);
+      toast.error("Não foi possível salvar a imagem.");
     } finally {
       setSaving(false);
     }
@@ -178,7 +221,20 @@ const ImagesSection = () => {
 
   const handleChange = (field: string, value: string) => {
     console.log(`Aplicando imagem para ${field}:`, value);
-    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Verificar se o campo e valor são válidos
+    if (!field || !value) {
+      console.error('Campo ou valor inválidos:', { field, value });
+      toast.error("Dados inválidos para aplicar imagem.");
+      return;
+    }
+    
+    // Atualizar o formData com a nova imagem
+    setFormData(prev => {
+      const newFormData = { ...prev, [field]: value };
+      console.log('Novo formData:', newFormData);
+      return newFormData;
+    });
     
     // Atualizar o botão de aplicar imagem
     const typeName = imageTypes.find(t => t.key === field)?.label || field;
@@ -186,6 +242,9 @@ const ImagesSection = () => {
     
     // Destacar visualmente a seção selecionada
     setSelectedImageType(field);
+    
+    // Salvar imediatamente se for necessário
+    // handleSave(field);
   };
 
 
@@ -281,7 +340,10 @@ const ImagesSection = () => {
                       alt={imageType.label}
                       className="w-20 h-20 object-cover rounded border border-poker-gold/30"
                       onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5';
+                        // Usar diretamente um placeholder confiável
+                        e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
+                        e.currentTarget.onerror = null; // Evitar loops infinitos
+                        console.error('Erro ao carregar imagem:', imageUrl);
                       }}
                     />
                     <Button
@@ -322,7 +384,7 @@ const ImagesSection = () => {
         })}
         
         <div className="bg-poker-black/50 p-4 rounded border border-poker-gold/10">
-          <h4 className="text-poker-gold font-medium mb-2">💡 Dicas para imagens:</h4>
+          <h4 className="text-poker-gold font-medium mb-2"> Dicas para imagens:</h4>
           <ul className="text-sm text-gray-300 space-y-1">
             <li>• Use imagens de alta qualidade para melhor resultado</li>
             <li>• Recomendamos usar serviços como Unsplash, Pexels ou seu próprio servidor</li>
@@ -359,7 +421,7 @@ const ImagesSection = () => {
                         <ul className="text-xs space-y-1">
                           <li>• Use imagens otimizadas (WebP, JPG)</li>
                           <li>• Tamanho recomendado: 1920x1080px</li>
-                          <li>• Limite de 5MB por arquivo</li>
+                          <li>• Sem limite de tamanho de arquivo</li>
                         </ul>
                       </TooltipContent>
                     </Tooltip>
@@ -466,12 +528,9 @@ const ImagesSection = () => {
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    // Verificar tamanho do arquivo (limite de 5MB)
-                    if (file.size > 5 * 1024 * 1024) {
-                      toast.error('O arquivo é muito grande. O tamanho máximo é 5MB.');
-                      e.target.value = '';
-                      return;
-                    }
+                    // Sem limite de tamanho de arquivo
+                    // Apenas log do tamanho para debug
+                    console.log(`Tamanho do arquivo: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
                     
                     try {
                       setUploading(true);
@@ -510,6 +569,7 @@ const ImagesSection = () => {
                         }));
                         
                         const typeName = imageTypes.find(t => t.key === selectedImageType)?.label || selectedImageType;
+                        const BUCKET_NAME = 'menu-images';
                         toast.success(`Imagem enviada com sucesso e pronta para ser aplicada como "${typeName}"!`);
                       } else {
                         toast.success('Imagem enviada com sucesso! Selecione uma seção para aplicá-la.');
@@ -602,7 +662,10 @@ const ImagesSection = () => {
                       alt={`Imagem ${index + 1}`} 
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.currentTarget.src = 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5';
+                        // Usar diretamente um placeholder confiável
+                        e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
+                        e.currentTarget.onerror = null; // Evitar loops infinitos
+                        console.error('Erro ao carregar imagem:', imageUrl);
                       }}
                       onClick={() => handleSelectImage(imageUrl)}
                     />
@@ -642,19 +705,70 @@ const ImagesSection = () => {
                               variant="outline" 
                               size="icon" 
                               className="h-7 w-7 rounded-full bg-poker-black/70 border-red-500/50 text-red-500 hover:bg-red-500/10"
-                              onClick={(e) => {
+                              onClick={async (e) => {
                                 e.stopPropagation();
-                                // Encontrar o objeto de imagem correspondente à URL
-                                const imageToDelete = imagesList.find(img => img.image_url === imageUrl);
-                                if (imageToDelete) {
-                                  if (confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
-                                    deleteImage(imageToDelete);
+                                console.log('Tentando apagar imagem com URL:', imageUrl);
+                                
+                                // Confirmar a exclusão
+                                if (!confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
+                                  return;
+                                }
+                                
+                                // Procurar a imagem pelo URL exato
+                                const imageObj = imagesList.find(i => i.image_url === imageUrl);
+                                
+                                if (imageObj) {
+                                  console.log('Imagem encontrada para deleção:', imageObj);
+                                  try {
+                                    await deleteImage(imageObj);
+                                    
+                                    // Limpar seleção se a imagem deletada estava selecionada
                                     if (selectedImage === imageUrl) {
                                       setSelectedImage(null);
                                     }
+                                    
+                                    // Atualizar a lista de imagens disponíveis após a deleção
+                                    setAvailableImages(prev => prev.filter(img => img !== imageUrl));
+                                    toast.success('Imagem apagada com sucesso!');
+                                    
+                                    // Recarregar imagens para garantir sincronização
+                                    fetchImages();
+                                  } catch (error) {
+                                    console.error('Erro ao apagar imagem:', error);
+                                    toast.error('Não foi possível apagar a imagem completamente.');
                                   }
                                 } else {
-                                  toast.error('Imagem não encontrada no sistema.');
+                                  // Se não encontrou no banco, tentar criar um objeto temporário para deleção
+                                  console.log('Imagem não encontrada no banco, tentando deletar do storage:', imageUrl);
+                                  
+                                  try {
+                                    // Criar um objeto temporário com a URL da imagem
+                                    const tempImageObj = {
+                                      id: `temp-${Date.now()}`,
+                                      type: 'gallery_image',
+                                      title: imageUrl.split('/').pop() || 'unknown',
+                                      image_url: imageUrl,
+                                      created_at: new Date().toISOString(),
+                                      updated_at: new Date().toISOString()
+                                    };
+                                    
+                                    await deleteImage(tempImageObj);
+                                    
+                                    // Limpar seleção se a imagem deletada estava selecionada
+                                    if (selectedImage === imageUrl) {
+                                      setSelectedImage(null);
+                                    }
+                                    
+                                    // Atualizar a lista de imagens disponíveis após a deleção
+                                    setAvailableImages(prev => prev.filter(img => img !== imageUrl));
+                                    toast.success('Imagem removida do storage com sucesso!');
+                                    
+                                    // Recarregar imagens para garantir sincronização
+                                    fetchImages();
+                                  } catch (error) {
+                                    console.error('Erro ao tentar remover imagem do storage:', error);
+                                    toast.error('Não foi possível remover a imagem do storage.');
+                                  }
                                 }
                               }}
                             >
@@ -666,37 +780,6 @@ const ImagesSection = () => {
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        className="h-7 w-7 rounded-full bg-poker-black/70 border-poker-gold/30 text-red-500 hover:bg-red-500/10 ml-1"
-                        title="Apagar imagem"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          console.log('Tentando apagar imagem com URL:', imageUrl);
-                          
-                          // Procurar a imagem pelo URL exato
-                          const imageObj = imagesList.find(i => i.image_url === imageUrl);
-                          
-                          if (imageObj) {
-                            console.log('Imagem encontrada para deleção:', imageObj);
-                            try {
-                              await deleteImage(imageObj);
-                              // Atualizar a lista de imagens disponíveis após a deleção
-                              setAvailableImages(prev => prev.filter(img => img !== imageUrl));
-                              toast.success('Imagem apagada com sucesso!');
-                            } catch (error) {
-                              console.error('Erro ao apagar imagem:', error);
-                              toast.error('Não foi possível apagar a imagem.');
-                            }
-                          } else {
-                            console.error('Imagem não encontrada para deleção. URL:', imageUrl);
-                            toast.error('Imagem não encontrada no banco de dados.');
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   </div>
                 ))}
@@ -790,7 +873,14 @@ const ImagesSection = () => {
                         alt="Prévia da imagem" 
                         className="w-full h-full object-contain"
                         onError={(e) => {
-                          e.currentTarget.src = 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5';
+                          // Usar uma imagem de fallback mais amigável com o logo do Green Table
+                          e.currentTarget.src = '/logo-green-table.png';
+                          // Tentar um fallback genérico se o logo não carregar
+                          e.currentTarget.onerror = () => {
+                            e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
+                            e.currentTarget.onerror = null; // Evitar loops infinitos
+                          };
+                          console.error('Erro ao carregar imagem de prévia:', previewImage);
                         }}
                       />
                     </div>

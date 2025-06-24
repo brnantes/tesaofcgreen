@@ -1,91 +1,91 @@
 
 import { Card, CardContent } from '@/components/ui/card';
-import { useChampions } from '@/hooks/useChampions';
+import { useFeaturedMenuItems } from '@/hooks/useFeaturedMenuItems';
 import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { useEffect } from 'react';
 
 const HallOfFame = () => {
-  const { champions, loading } = useChampions();
+  const { featuredItems, loading, refetch } = useFeaturedMenuItems();
   
-  // Fallback data para quando não houver campeões no banco de dados
-  const fallbackChampions = [
-    {
-      id: '1',
-      name: 'Carlos Mendes',
-      achievement: 'Campeão 2024',
-      prize: 'R$ 15.000',
-      image_url: 'https://images.unsplash.com/photo-1581092795360-fd1ca04f0952?ixlib=rb-4.0.3'
-    },
-    {
-      id: '2',
-      name: 'Ana Silva',
-      achievement: 'Torneio Premium',
-      prize: 'R$ 8.500',
-      image_url: 'https://images.unsplash.com/photo-1494790108755-2616b332e234?ixlib=rb-4.0.3'
-    },
-    {
-      id: '3',
-      name: 'Roberto Santos',
-      achievement: 'Championship',
-      prize: 'R$ 12.000',
-      image_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3'
-    },
-    {
-      id: '4',
-      name: 'Mauri Sem Sação',
-      achievement: 'Hold\'em Master',
-      prize: 'R$ 6.200',
-      image_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?ixlib=rb-4.0.3'
-    }
-  ];
+  // Não usaremos mais dados fictícios de fallback
+  // Mostraremos apenas os itens reais marcados como destaque no banco de dados
+  const displayItems = featuredItems;
   
-  // Usar os campeões do banco de dados se disponíveis, caso contrário usar os fallback
-  const displayChampions = champions.length > 0 ? champions : fallbackChampions;
+  // Log para depuração
+  useEffect(() => {
+    console.log('HallOfFame - Itens em destaque:', featuredItems);
+  }, [featuredItems]);
+  
+  // Forçar uma nova busca quando o componente montar
+  useEffect(() => {
+    refetch();
+  }, []);
 
   return (
     <section id="hall-of-fame" className="py-20 bg-green-gray-dark">
       <div className="container mx-auto px-4">
         <div className="text-center mb-12 animate-fade-in">
           <h2 className="text-4xl md:text-5xl font-bold mb-4 gradient-text">
-            Nossos campeões
+            Mais Pedidos
           </h2>
           <p className="text-xl text-gray-300">
-            Jogadores que marcaram história no Green Table
+            Experimente os pratos favoritos dos nossos clientes
           </p>
         </div>
         
         {loading ? (
           <div className="flex justify-center items-center py-12">
             <Loader2 className="w-8 h-8 text-green-primary animate-spin" />
-            <span className="ml-2 text-green-primary">Carregando campeões...</span>
+            <span className="ml-2 text-green-primary">Carregando pratos em destaque...</span>
+          </div>
+        ) : displayItems.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-300 text-lg">Nenhum prato em destaque disponível no momento.</p>
+            <p className="text-gray-400 mt-2">Visite a seção de cardápio para ver todos os nossos pratos.</p>
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {displayChampions.map((champion, index) => (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {displayItems.map((item, index) => (
               <Card 
-                key={champion.id} 
-                className="bg-green-gray-medium border-green-primary/20 card-hover animate-slide-in-left"
+                key={item.id} 
+                className="bg-green-gray-medium border-green-primary/20 card-hover animate-slide-in-left overflow-hidden"
                 style={{ animationDelay: `${index * 0.1}s` }}
               >
-                <CardContent className="p-6 text-center">
-                  <div className="relative mb-4">
-                    <img 
-                      src={champion.image_url} 
-                      alt={champion.name}
-                      className="w-20 h-20 rounded-full mx-auto object-cover border-2 border-green-primary"
-                    />
-                    <div className="absolute -top-2 -right-2 w-8 h-8 bg-green-primary rounded-full flex items-center justify-center">
-                      <span className="text-green-black font-bold text-sm">👑</span>
-                    </div>
+                <div className="relative h-48 overflow-hidden">
+                  <img 
+                    src={item.image_url} 
+                    alt={item.name}
+                    className="w-full h-full object-cover transition-transform duration-500 hover:scale-110"
+                    onError={(e) => {
+                      console.log('Erro ao carregar imagem:', item.image_url);
+                      e.currentTarget.src = 'https://placehold.co/600x400/333/CCC?text=Imagem+não+disponível';
+                    }}
+                  />
+                  <div className="absolute top-2 right-2">
+                    <span className="bg-green-primary text-green-black text-xs font-bold px-2 py-1 rounded-full flex items-center">
+                      <span className="mr-1">👍</span> Mais Pedido
+                    </span>
                   </div>
-                  <h3 className="text-green-primary font-semibold text-lg mb-1">
-                    {champion.name}
-                  </h3>
-                  <p className="text-gray-400 text-sm mb-2">
-                    {champion.achievement}
+                </div>
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-green-primary font-semibold text-xl">
+                      {item.name}
+                    </h3>
+                    <span className="text-green-primary font-bold text-lg">
+                      {item.price}
+                    </span>
+                  </div>
+                  <p className="text-gray-300 text-sm mb-4 line-clamp-2">
+                    {item.description}
                   </p>
-                  <p className="text-green-primary font-bold text-xl">
-                    {champion.prize}
-                  </p>
+                  <Button 
+                    className="w-full bg-green-primary hover:bg-green-primary/80 text-green-black font-medium"
+                    variant="default"
+                  >
+                    Pedir Agora
+                  </Button>
                 </CardContent>
               </Card>
             ))}

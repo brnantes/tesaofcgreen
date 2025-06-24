@@ -30,90 +30,40 @@ export const useSiteImages = () => {
     return obj;
   }, [images]);
   
-  // Carregar imagens ao inicializar o componente
+  // Carregar imagens  // Inicializar o hook
   useEffect(() => {
-    console.log('Efeito de inicialização - carregando imagens');
+    console.log('Inicializando hook useSiteImages - useEffect');
     fetchImages();
   }, []);
 
-  let BUCKET_NAME = 'meu-itens';
+  // [Cascade] Usar sempre o bucket unificado 'menu-images' para todas as operações de imagem
+const BUCKET_NAME = 'menu-images';
 
   const fetchImages = async () => {
     try {
       setLoading(true);
       console.log('Iniciando busca de imagens... [DEBUG]');
       
-      // Verificar quais buckets existem e usar o correto
-      try {
-        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-        
-        if (bucketsError) {
-          console.error('Erro ao listar buckets:', bucketsError);
-        } else {
-          console.log('Buckets disponíveis:', buckets.map(b => b.name));
-          
-          // Verificar se algum dos buckets que queremos existe
-          const meuItensBucketExists = buckets.some(b => b.name === 'meu-itens');
-          const menuImagesBucketExists = buckets.some(b => b.name === 'menu-images');
-          
-          if (meuItensBucketExists) {
-            BUCKET_NAME = 'meu-itens';
-            console.log('Usando bucket existente: meu-itens');
-          } else if (menuImagesBucketExists) {
-            BUCKET_NAME = 'menu-images';
-            console.log('Usando bucket existente: menu-images');
-          } else {
-            // Nenhum dos buckets existe, vamos criar um
-            console.log('Nenhum bucket encontrado. Tentando criar o bucket meu-itens...');
-            try {
-              const { data, error } = await supabase.storage.createBucket('meu-itens', {
-                public: true
-              });
-              
-              if (error) {
-                console.error('Erro ao criar bucket meu-itens:', error);
-                // Tentar criar o outro bucket como fallback
-                const { data: data2, error: error2 } = await supabase.storage.createBucket('menu-images', {
-                  public: true
-                });
-                
-                if (error2) {
-                  console.error('Erro ao criar bucket menu-images:', error2);
-                } else {
-                  BUCKET_NAME = 'menu-images';
-                  console.log('Bucket menu-images criado com sucesso');
-                }
-              } else {
-                BUCKET_NAME = 'meu-itens';
-                console.log('Bucket meu-itens criado com sucesso');
-              }
-            } catch (e) {
-              console.error('Exceção ao criar bucket:', e);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Exceção ao verificar buckets:', e);
-      }
-      
-      console.log(`Usando bucket: ${BUCKET_NAME} para operações de imagem`);
+      // [Cascade] Não há mais lógica de múltiplos buckets. Usar sempre o bucket 'menu-images' para operações de imagem
+      console.log(`[Cascade] Usando bucket existente: ${BUCKET_NAME} para operações de imagem`);
       
       // Buscar imagens do banco de dados (site_content)
-      const { data: dbImages, error: dbError } = await supabase
-        .from('site_content')
-        .select('*')
-        .eq('type', 'site_image')
-        .order('created_at', { ascending: false });
-
-      if (dbError) {
-        console.error('Erro ao buscar imagens do banco:', dbError);
-        throw dbError;
-      }
+    const { data: dbImages, error: dbError } = await supabase
+      .from('site_content')
+      .select('*')
+      .eq('type', 'site_image')
+      .order('created_at', { ascending: false });
+    
+    if (dbError) {
+      console.error('Erro ao buscar imagens do banco:', dbError);
+      // Não lançar exceção, apenas registrar o erro e continuar com array vazio
+      console.log('Continuando com array vazio para imagens do banco');
+    }
       
       console.log('Imagens encontradas no banco:', dbImages?.length || 0);
       
       // Formatar imagens do banco de dados
-      const formattedDbImages = dbImages?.map(item => ({
+      const dbImagesFormatted = dbImages?.map(item => ({
         id: item.id,
         type: item.title, // hero_background, about_image, etc.
         title: item.title,
@@ -124,60 +74,34 @@ export const useSiteImages = () => {
       
       // Buscar TODAS as imagens do bucket
       // Primeiro, listar a pasta raiz
-      console.log('Buscando arquivos no bucket menu-images...');
-      const { data: rootFiles, error: rootError } = await supabase.storage
-        .from(BUCKET_NAME)
-        .list('', {
-          sortBy: { column: 'created_at', order: 'desc' },
-        });
-      
-      console.log('Resposta da API de listagem:', { data: rootFiles, error: rootError });
+      console.log(`[Cascade] Buscando arquivos no bucket ${BUCKET_NAME}...`);
+      let rootFiles = [];
+      try {
+        const { data, error } = await supabase.storage
+          .from(BUCKET_NAME)
+          .list('', {
+            sortBy: { column: 'created_at', order: 'desc' },
+          });
         
-      if (rootError) {
-        console.error('Erro ao listar arquivos da raiz do bucket:', rootError);
-        console.error('Detalhes do erro:', JSON.stringify(rootError));
-        // Mesmo com erro, continuar com as imagens do banco
-        setImages(formattedDbImages);
-        setLoading(false);
-        return;
+        console.log('Resposta da API de listagem:', { data, error });
+          
+        if (error) {
+          console.error('Erro ao listar arquivos da raiz do bucket:', error);
+          console.error('Detalhes do erro:', JSON.stringify(error));
+          // Não mostrar erro ao usuário, apenas registrar no console
+          console.log('Continuando com array vazio para arquivos do bucket');
+        } else {
+          rootFiles = data || [];
+        }
+      } catch (e) {
+        console.error('Exceção ao listar arquivos do bucket:', e);
+        // Continuar com array vazio
+        rootFiles = [];
       }
       
-      // Se não houver arquivos, verificar se o bucket existe
+      // Se não houver arquivos, registrar no console apenas
       if (!rootFiles || rootFiles.length === 0) {
-        console.log('Nenhum arquivo encontrado no bucket. Verificando se o bucket existe...');
-        
-        // Tentar listar buckets disponíveis
-        try {
-          const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
-          
-          if (bucketsError) {
-            console.error('Erro ao listar buckets:', bucketsError);
-          } else {
-            console.log('Buckets disponíveis:', buckets.map(b => b.name));
-            
-            // Verificar se o bucket 'menu-images' existe
-            const bucketExists = buckets.some(b => b.name === 'menu-images');
-            console.log(`O bucket 'menu-images' ${bucketExists ? 'existe' : 'NÃO existe'}!`);
-            
-            if (!bucketExists) {
-              console.log('Tentando criar o bucket menu-images...');
-              try {
-                const { data, error } = await supabase.storage.createBucket('menu-images', {
-                  public: true
-                });
-                if (error) {
-                  console.error('Erro ao criar bucket:', error);
-                } else {
-                  console.log('Bucket criado com sucesso:', data);
-                }
-              } catch (e) {
-                console.error('Exceção ao criar bucket:', e);
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Exceção ao listar buckets:', e);
-        }
+        console.log('Nenhum arquivo encontrado no bucket.');
       }
       
       console.log('Arquivos na raiz do bucket:', rootFiles);
@@ -186,92 +110,131 @@ export const useSiteImages = () => {
       // Lista para armazenar todos os arquivos
       let allBucketFiles = [];
       
-      // Adicionar arquivos da raiz (exceto pastas)
-      const rootImages = (rootFiles || []).filter(file => !file.id.endsWith('/'));
-      console.log('Imagens na raiz (excluindo pastas):', rootImages.length);
-      allBucketFiles.push(...rootImages);
-      
-      // Listar todas as pastas na raiz
-      const folders = (rootFiles || []).filter(file => file.id.endsWith('/'));
-      console.log('Pastas encontradas:', folders.map(f => f.name));
-      
-      // Para cada pasta, listar seu conteúdo
-      for (const folder of folders) {
-        const folderPath = folder.name;
-        console.log(`Listando conteúdo da pasta: ${folderPath}`);
+      try {
+        // Adicionar arquivos da raiz (exceto pastas)
+        const rootImages = (rootFiles || []).filter(file => !file.id?.endsWith('/'));
+        console.log('Imagens na raiz (excluindo pastas):', rootImages.length);
+        allBucketFiles.push(...rootImages);
         
-        const { data: folderFiles, error: folderError } = await supabase.storage
-          .from(BUCKET_NAME)
-          .list(folderPath, {
-            sortBy: { column: 'created_at', order: 'desc' },
-          });
-          
-        if (folderError) {
-          console.error(`Erro ao listar arquivos da pasta ${folderPath}:`, folderError);
-          continue;
+        // Listar todas as pastas na raiz
+        const folders = (rootFiles || []).filter(file => file.id?.endsWith('/'));
+        console.log('Pastas encontradas:', folders.map(f => f.name));
+        
+        // Para cada pasta, listar seu conteúdo
+        for (const folder of folders) {
+          try {
+            const folderPath = folder.name;
+            console.log(`Listando conteúdo da pasta: ${folderPath}`);
+            
+            const { data: folderFiles, error: folderError } = await supabase.storage
+              .from(BUCKET_NAME)
+              .list(folderPath, {
+                sortBy: { column: 'created_at', order: 'desc' },
+              });
+              
+            if (folderError) {
+              console.error(`Erro ao listar arquivos da pasta ${folderPath}:`, folderError);
+              continue;
+            }
+            
+            // Adicionar arquivos da pasta (não subpastas)
+            const folderImages = (folderFiles || []).filter(file => !file.id?.endsWith('/'));
+            
+            // Adicionar caminho da pasta ao nome do arquivo com tipagem correta
+            const folderImagesWithPath = folderImages.map(file => ({
+              ...file,
+              // Adicionando propriedade customizada com caminho completo
+              customPath: `${folderPath}${file.name}`
+            }));
+            
+            allBucketFiles.push(...folderImagesWithPath);
+          } catch (folderError) {
+            console.error('Erro ao processar pasta:', folder.name, folderError);
+            // Continuar com a próxima pasta
+          }
         }
-        
-        // Adicionar arquivos da pasta (não subpastas)
-        const folderImages = (folderFiles || []).filter(file => !file.id.endsWith('/'));
-        
-        // Adicionar caminho da pasta ao nome do arquivo com tipagem correta
-        const folderImagesWithPath = folderImages.map(file => ({
-          ...file,
-          // Adicionando propriedade customizada com caminho completo
-          customPath: `${folderPath}${file.name}`
-        }));
-        
-        allBucketFiles.push(...folderImagesWithPath);
+      } catch (filesError) {
+        console.error('Erro ao processar arquivos do bucket:', filesError);
+        // Continuar com array vazio
+        allBucketFiles = [];
       }
       
       console.log('Total de arquivos encontrados no bucket:', allBucketFiles.length);
       
       // Criar registros para imagens que estão no bucket
-      const bucketImages = allBucketFiles.map(file => {
-        // Determinar o caminho correto do arquivo para a URL pública
-        const fullPath = (file as any).customPath || file.name;
-        
-        // Obter URL pública
-        const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
-        
-        return {
-          id: `bucket-${fullPath}`,
-          type: 'gallery_image', // Todas as imagens do bucket são consideradas da galeria
-          title: file.name,
-          image_url: data.publicUrl,
-          created_at: file.created_at || new Date().toISOString(),
-          updated_at: file.updated_at || new Date().toISOString()
-        };
-      });
+      let bucketImages = [];
+      try {
+        bucketImages = allBucketFiles.map(file => {
+          try {
+            // Determinar o caminho correto do arquivo para a URL pública
+            const fullPath = (file as any).customPath || file.name;
+            
+            // Obter URL pública
+            const { data } = supabase.storage.from(BUCKET_NAME).getPublicUrl(fullPath);
+            
+            // Verificar se a URL pública é válida
+            const publicUrl = data?.publicUrl || '';
+            
+            // Validar se a URL é válida antes de retornar
+            if (!publicUrl || !publicUrl.startsWith('http')) {
+              console.warn(`URL inválida para arquivo ${fullPath}: ${publicUrl}`);
+              return null;
+            }
+            
+            return {
+              id: `bucket-${fullPath}`,
+              type: 'gallery_image', // Todas as imagens do bucket são consideradas da galeria
+              title: file.name || 'imagem',
+              image_url: publicUrl,
+              created_at: file.created_at || new Date().toISOString(),
+              updated_at: file.updated_at || new Date().toISOString()
+            };
+          } catch (fileError) {
+            console.error('Erro ao processar arquivo individual:', file.name, fileError);
+            // Retornar objeto vazio que será filtrado depois
+            return null;
+          }
+        }).filter(Boolean); // Remover itens nulos
+      } catch (e) {
+        console.error('Erro ao mapear arquivos do bucket:', e);
+        bucketImages = [];
+      }
+      
+      // Garantir que formattedDbImages seja sempre um array válido
+      const formattedDbImages = dbImages?.map(item => ({
+        id: item.id,
+        type: item.title, // hero_background, about_image, etc.
+        title: item.title,
+        image_url: item.content,
+        created_at: item.created_at,
+        updated_at: item.updated_at
+      })) || [];
       
       console.log(`Encontradas ${formattedDbImages.length} imagens no banco e ${bucketImages.length} no bucket`);
       
-      // Combinar imagens do banco com imagens do bucket
-      // Mostrar todas as imagens do bucket, independentemente se estão no banco ou não
-      // Isso garante que todas as imagens do bucket sejam exibidas
-      console.log('Todas as imagens do bucket:', bucketImages);
-      
-      // Apenas para depuração - verificar se há URLs duplicadas
-      const uniqueUrls = new Set();
-      bucketImages.forEach(img => {
-        if (uniqueUrls.has(img.image_url)) {
-          console.log('URL duplicada encontrada:', img.image_url);
-        } else {
-          uniqueUrls.add(img.image_url);
-        }
-      });
+      // Filtrar imagens do bucket para remover URLs inválidas
+      const validBucketImages = bucketImages.filter(img => img && img.image_url);
+      console.log('Imagens válidas do bucket:', validBucketImages.length);
       
       // Usar todas as imagens do bucket e adicionar as imagens do banco que não estão no bucket
-      const bucketUrls = new Set(bucketImages.map(img => img.image_url));
-      const uniqueDbImages = formattedDbImages.filter(img => !bucketUrls.has(img.image_url));
+      try {
+        const bucketUrls = new Set(validBucketImages.map(img => img.image_url));
+        const uniqueDbImages = formattedDbImages.filter(img => img && img.image_url && !bucketUrls.has(img.image_url));
+        
+        const allImages = [...validBucketImages, ...uniqueDbImages];
+        setImages(allImages);
+        console.log(`Total de ${allImages.length} imagens únicas carregadas`);
+        if (allImages.length > 0) {
+          console.log('Primeiras 5 imagens:', allImages.slice(0, 5));
+        }
+      } catch (combineError) {
+        console.error('Erro ao combinar imagens:', combineError);
+        // Em caso de erro, usar apenas as imagens do banco
+        setImages(formattedDbImages);
+      }
       
-      const allImages = [...bucketImages, ...uniqueDbImages];
-      setImages(allImages);
-      console.log(`Total de ${allImages.length} imagens únicas carregadas`);
-      console.log('Primeiras 5 imagens:', allImages.slice(0, 5));
-      
-      // Se não houver imagens, tentar fazer upload de uma imagem de teste
-      if (allImages.length === 0) {
+      // Se não houver imagens, verificar permissões do bucket
+      if (images.length === 0) {
         console.log('Nenhuma imagem encontrada. Verificando permissões do bucket...');
         
         // Verificar permissões do bucket
@@ -299,18 +262,40 @@ export const useSiteImages = () => {
     try {
       console.log('Salvando imagem:', imageType, imageUrl);
       
+      if (!imageType || !imageUrl) {
+        console.error('Tipo de imagem ou URL inválidos:', { imageType, imageUrl });
+        sonnerToast.error("Dados da imagem inválidos.");
+        return null;
+      }
+      
+      // Verificar se a URL da imagem é válida
+      if (!imageUrl.startsWith('http')) {
+        console.error('URL de imagem inválida:', imageUrl);
+        sonnerToast.error("URL da imagem inválida.");
+        return null;
+      }
+      
+      console.log(`Salvando imagem do tipo '${imageType}' com URL: ${imageUrl}`);
+      
       // Primeiro verificar se já existe um registro para este tipo de imagem
-      const { data: existingData } = await supabase
+      const { data: existingData, error: queryError } = await supabase
         .from('site_content')
         .select('*')
         .eq('type', 'site_image')
         .eq('title', imageType)
         .maybeSingle();
       
+      if (queryError) {
+        console.error('Erro ao verificar imagem existente:', queryError);
+      }
+      
+      console.log('Registro existente:', existingData);
+      
       let result;
       
       if (existingData) {
         // Se existe, atualiza o registro
+        console.log(`Atualizando registro existente ID ${existingData.id} para ${imageType}`);
         const { data, error } = await supabase
           .from('site_content')
           .update({
@@ -321,10 +306,15 @@ export const useSiteImages = () => {
           .select()
           .single();
           
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao atualizar registro:', error);
+          throw error;
+        }
         result = data;
+        console.log('Registro atualizado com sucesso:', result);
       } else {
         // Se não existe, insere um novo registro
+        console.log(`Criando novo registro para ${imageType}`);
         const { data, error } = await supabase
           .from('site_content')
           .insert([{
@@ -335,25 +325,77 @@ export const useSiteImages = () => {
           .select()
           .single();
           
-        if (error) throw error;
+        if (error) {
+          console.error('Erro ao inserir novo registro:', error);
+          throw error;
+        }
         result = data;
+        console.log('Novo registro criado com sucesso:', result);
       }
       
-      await fetchImages();
-      // Usando o toast do Sonner em vez do toast padrão
+      // Atualizar o estado local imediatamente para refletir a mudança
+      // Isso garante que a interface seja atualizada mesmo antes de fetchImages() completar
+      setImages(prevImages => {
+        // Verificar se já existe uma imagem com este tipo
+        const existingIndex = prevImages.findIndex(img => img.type === imageType);
+        
+        if (existingIndex >= 0) {
+          // Atualizar a imagem existente
+          const updatedImages = [...prevImages];
+          updatedImages[existingIndex] = {
+            ...updatedImages[existingIndex],
+            image_url: imageUrl,
+            updated_at: new Date().toISOString()
+          };
+          return updatedImages;
+        } else {
+          // Adicionar nova imagem
+          return [...prevImages, {
+            id: `temp-${Date.now()}`,
+            type: imageType,
+            title: imageType,
+            image_url: imageUrl,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }];
+        }
+      });
+      
+      // Recarregar imagens para garantir sincronização com o banco
+      fetchImages();
       sonnerToast.success("Imagem atualizada com sucesso!");
       return result;
     } catch (error) {
       console.error('Erro ao salvar imagem:', error);
-      // Usando o toast do Sonner em vez do toast padrão
       sonnerToast.error("Não foi possível salvar a imagem.");
       throw error;
     }
   };
 
   const getImageUrl = (imageType: string, fallbackUrl: string) => {
+    console.log(`Buscando imagem do tipo: ${imageType}`);
+    console.log(`Total de imagens disponíveis: ${images.length}`);
+    
+    // Primeiro, procurar nas imagens do site (site_content)
     const image = images.find(img => img.type === imageType);
-    return image?.image_url || fallbackUrl;
+    
+    if (image && image.image_url) {
+      console.log(`Imagem encontrada para ${imageType}:`, image.image_url);
+      return image.image_url;
+    }
+    
+    // Se não encontrou, procurar nas imagens da galeria que tenham o nome correspondente
+    const galleryImage = images.find(img => 
+      img.title && img.title.toLowerCase().includes(imageType.toLowerCase())
+    );
+    
+    if (galleryImage && galleryImage.image_url) {
+      console.log(`Imagem de galeria encontrada para ${imageType}:`, galleryImage.image_url);
+      return galleryImage.image_url;
+    }
+    
+    console.log(`Nenhuma imagem encontrada para ${imageType}, usando fallback:`, fallbackUrl);
+    return fallbackUrl;
   };
 
   useEffect(() => {
@@ -490,54 +532,176 @@ export const useSiteImages = () => {
         return;
       }
 
-      // Extrai o caminho relativo do arquivo a partir da URL pública
-      // Verificar qual bucket está sendo usado na URL
-      let filePath;
-      if (image.image_url.includes('/meu-itens/')) {
-        const urlParts = image.image_url.split('/meu-itens/');
-        filePath = urlParts[1];
-        console.log('URL parts (meu-itens):', urlParts);
-      } else if (image.image_url.includes('/menu-images/')) {
-        const urlParts = image.image_url.split('/menu-images/');
-        filePath = urlParts[1];
-        console.log('URL parts (menu-images):', urlParts);
-      } else {
-        console.error('URL não contém o nome do bucket esperado:', image.image_url);
-        throw new Error('Formato de URL inválido');
-      }
-      
-      if (!filePath) {
-        console.error('Não foi possível extrair o caminho do arquivo da URL:', image.image_url);
-        throw new Error('Formato de URL inválido');
-      }
-      
-      console.log('Removendo arquivo do storage:', filePath);
-
-      // Remove do Storage
-      const { error: storageError } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
-      if (storageError) {
-        console.error('Erro ao remover do storage:', storageError);
-        throw storageError;
-      }
-
-      console.log('Removendo registro do banco de dados, ID:', image.id);
-      // Remove do banco de dados
-      const { error: dbError } = await supabase.from('site_content')
-        .delete()
-        .eq('id', image.id);
+      // Primeiro, remover do banco de dados se a imagem tiver um ID válido
+      let removedFromDB = false;
+      if (image.id && !image.id.startsWith('temp-') && !image.id.startsWith('bucket-')) {
+        console.log('Removendo registro do banco de dados, ID:', image.id);
         
-      if (dbError) {
-        console.error('Erro ao remover do banco de dados:', dbError);
-        throw dbError;
+        try {
+          const { error: dbError } = await supabase.from('site_content')
+            .delete()
+            .eq('id', image.id);
+            
+          if (dbError) {
+            console.error('Erro ao remover do banco de dados:', dbError);
+            sonnerToast.warning('Erro ao remover registro do banco de dados.');
+          } else {
+            console.log('Registro removido do banco de dados com sucesso');
+            removedFromDB = true;
+          }
+        } catch (dbError) {
+          console.error('Exceção ao remover do banco de dados:', dbError);
+          sonnerToast.warning('Erro ao acessar o banco de dados.');
+        }
+      } else {
+        console.log('Imagem não tem ID válido no banco de dados ou é temporária:', image.id);
       }
 
-      console.log('Imagem apagada com sucesso!');
-      // Atualiza a lista de imagens
+      // Agora, remover o arquivo do storage
+      let removedFromStorage = false;
+      let filePath = null;
+      
+      // Método 1: Tentar extrair o caminho do arquivo da URL pública usando padrões conhecidos
+      const urlPatterns = [
+        { pattern: '/menu-images/', bucket: 'menu-images' },
+        { pattern: '/meu-itens/', bucket: 'meu-itens' },  // legado
+        { pattern: '/menu-itens/', bucket: 'menu-itens' }  // legado
+      ];
+      
+      for (const { pattern, bucket } of urlPatterns) {
+        if (image.image_url.includes(pattern)) {
+          const urlParts = image.image_url.split(pattern);
+          if (urlParts.length > 1) {
+            filePath = urlParts[1];
+            console.log(`Caminho do arquivo (${bucket}):`, filePath);
+            
+            // Remover do bucket atual
+            try {
+              console.log(`Tentando remover ${filePath} do bucket ${BUCKET_NAME}`);
+              const { error: storageError } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+              
+              if (storageError) {
+                console.error('Erro ao remover do storage:', storageError);
+              } else {
+                console.log('Arquivo removido do storage com sucesso');
+                removedFromStorage = true;
+              }
+            } catch (storageError) {
+              console.error('Exceção ao remover do storage:', storageError);
+            }
+            
+            // Se estamos lidando com um bucket legado, tentar remover do bucket atual também
+            if (bucket !== BUCKET_NAME) {
+              try {
+                console.log(`Tentando remover também do bucket legado ${bucket}`);
+                await supabase.storage.from(bucket).remove([filePath]);
+              } catch (legacyError) {
+                console.log('Erro ao tentar remover do bucket legado (esperado):', legacyError);
+              }
+            }
+            
+            break;
+          }
+        }
+      }
+      
+      // Método 2: Se não conseguiu pelo método 1, tentar extrair o nome do arquivo da URL
+      if (!filePath) {
+        try {
+          const url = new URL(image.image_url);
+          const pathname = url.pathname;
+          const parts = pathname.split('/');
+          const filename = parts[parts.length - 1];
+          
+          if (filename && filename.includes('.')) {
+            filePath = filename;
+            console.log('Extraindo nome do arquivo da URL:', filePath);
+            
+            // Tentar remover usando apenas o nome do arquivo
+            try {
+              console.log(`Tentando remover ${filePath} do bucket ${BUCKET_NAME}`);
+              const { error: storageError } = await supabase.storage.from(BUCKET_NAME).remove([filePath]);
+              
+              if (storageError) {
+                console.error('Erro ao remover do storage usando nome do arquivo:', storageError);
+              } else {
+                console.log('Arquivo removido do storage com sucesso usando nome do arquivo');
+                removedFromStorage = true;
+              }
+            } catch (storageError) {
+              console.error('Exceção ao remover do storage usando nome do arquivo:', storageError);
+            }
+          }
+        } catch (e) {
+          console.error('Erro ao analisar URL:', e);
+        }
+      }
+      
+      // Método 3: Última tentativa - listar arquivos do bucket e procurar por correspondência
+      if (!removedFromStorage) {
+        try {
+          console.log('Tentando encontrar o arquivo listando o bucket...');
+          const { data: files, error: listError } = await supabase.storage.from(BUCKET_NAME).list();
+          
+          if (listError) {
+            console.error('Erro ao listar arquivos do bucket:', listError);
+          } else if (files && files.length > 0) {
+            // Extrair o nome do arquivo da URL da imagem
+            const urlFilename = image.image_url.split('/').pop() || '';
+            console.log('Procurando por arquivo com nome:', urlFilename);
+            
+            // Procurar por um arquivo que corresponda ao nome do arquivo na URL
+            const matchingFile = files.find(file => 
+              file.name === urlFilename || 
+              (urlFilename && file.name.includes(urlFilename))
+            );
+            
+            if (matchingFile) {
+              console.log('Arquivo correspondente encontrado:', matchingFile.name);
+              
+              try {
+                const { error: removeError } = await supabase.storage.from(BUCKET_NAME).remove([matchingFile.name]);
+                
+                if (removeError) {
+                  console.error('Erro ao remover arquivo correspondente:', removeError);
+                } else {
+                  console.log('Arquivo correspondente removido com sucesso');
+                  removedFromStorage = true;
+                }
+              } catch (removeError) {
+                console.error('Exceção ao remover arquivo correspondente:', removeError);
+              }
+            } else {
+              console.log('Nenhum arquivo correspondente encontrado no bucket');
+            }
+          }
+        } catch (listError) {
+          console.error('Exceção ao listar arquivos do bucket:', listError);
+        }
+      }
+
+      // Atualizar a lista de imagens independentemente do resultado
+      console.log('Atualizando lista de imagens...');
       await fetchImages();
-      sonnerToast.success('Imagem apagada com sucesso!');
+      
+      // Atualizar o estado local removendo a imagem excluída
+      setImages(prevImages => prevImages.filter(img => img.image_url !== image.image_url));
+      
+      // Mostrar mensagem apropriada com base no resultado
+      if (removedFromDB && removedFromStorage) {
+        sonnerToast.success('Imagem removida com sucesso do banco e do storage!');
+      } else if (removedFromDB) {
+        sonnerToast.success('Imagem removida do banco de dados, mas não foi possível remover do storage.');
+      } else if (removedFromStorage) {
+        sonnerToast.success('Imagem removida do storage, mas não foi possível remover do banco de dados.');
+      } else {
+        sonnerToast.warning('Não foi possível remover completamente a imagem. Tente novamente.');
+      }
+      
+      return { removedFromDB, removedFromStorage };
     } catch (error) {
       console.error('Erro ao apagar imagem:', error);
-      sonnerToast.error('Não foi possível apagar a imagem.');
+      sonnerToast.error('Não foi possível apagar a imagem completamente.');
       throw error;
     }
   };

@@ -53,6 +53,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
     price: '',
     image_url: '',
     category: 'Lanches',
+    featured: false,
   });
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -70,6 +71,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
         price: item.price || '',
         image_url: item.image_url || '',
         category: item.category || 'Lanches',
+        featured: item.featured || false,
       });
       setImagePreview(item.image_url || '');
     } else {
@@ -80,6 +82,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
         price: '',
         image_url: '',
         category: 'Lanches',
+        featured: false,
       });
       setImagePreview('');
     }
@@ -126,19 +129,23 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
     setErrors(prev => ({ ...prev, price: error }));
   };
 
+  // Upload de imagem usando bucket existente 'menu-images'
   const handleImageUpload = async (file: File) => {
-    console.log('Iniciando upload da imagem:', file.name);
+    // Bucket existente para imagens de itens do menu
+    const BUCKET_NAME = 'menu-images';
+    console.log('Iniciando upload da imagem:', file.name, `(${(file.size / (1024 * 1024)).toFixed(2)}MB)`);
     setUploading(true);
-    
+
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
       const filePath = fileName;
 
-      console.log('Fazendo upload para o bucket menu-images:', filePath);
-      
+      console.log('Fazendo upload para o bucket', BUCKET_NAME + ':', filePath);
+
+      // Configuração melhorada para uploads maiores
       const { data, error } = await supabase.storage
-        .from('menu-images')
+        .from(BUCKET_NAME)
         .upload(filePath, file, {
           cacheControl: '3600',
           upsert: false
@@ -146,13 +153,29 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
 
       if (error) {
         console.error('Erro no upload:', error);
+        // Mostrar mensagem de erro mais detalhada
+        let errorMessage = "Erro ao fazer upload da imagem.";
+        
+        // Verificar se é erro de tamanho
+        if (error.message && error.message.includes("size")) {
+          errorMessage = `Erro de tamanho: ${error.message}. Verifique as configurações do bucket no Supabase.`;
+        } else if (error.message) {
+          errorMessage = `Erro: ${error.message}`;
+        }
+        
+        toast({
+          title: "Falha no upload",
+          description: errorMessage,
+          variant: "destructive",
+        });
+        
         throw error;
       }
 
       console.log('Upload concluído:', data);
 
       const { data: publicData } = supabase.storage
-        .from('menu-images')
+        .from(BUCKET_NAME)
         .getPublicUrl(filePath);
 
       const imageUrl = publicData.publicUrl;
@@ -160,12 +183,12 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
 
       setFormData(prev => ({ ...prev, image_url: imageUrl }));
       setImagePreview(imageUrl);
-      
+
       toast({
         title: "Upload concluído",
         description: "Imagem enviada com sucesso!",
       });
-      
+
       return imageUrl;
     } catch (error) {
       console.error('Erro ao fazer upload da imagem:', error);
@@ -179,6 +202,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
       setUploading(false);
     }
   };
+  // Fim do bloco de upload com bucket 'menu-itens'
 
   const handleFileSelect = (file: File) => {
     console.log('Arquivo selecionado:', file.name, file.type, file.size);
@@ -193,15 +217,9 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
       return;
     }
     
-    // Validar tamanho (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: "Arquivo muito grande",
-        description: "A imagem deve ter no máximo 10MB.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Não há mais validação de tamanho máximo de arquivo
+    // Apenas log do tamanho para debug
+    console.log(`Tamanho do arquivo: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
     
     setImageFile(file);
     
@@ -340,13 +358,8 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          {/* Categoria */}
-          <div>
-            <label className="block text-sm font-medium mb-3 text-white flex items-center gap-2">
-              <Badge variant="secondary" className="bg-poker-gold/20 text-poker-gold">
-                Categoria *
-              </Badge>
-            </label>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium mb-2 text-white">Categoria *</label>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               {CATEGORIES.map((category) => (
                 <motion.div
@@ -379,6 +392,26 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
                 {errors.category}
               </motion.p>
             )}
+          </div>
+
+          {/* Mais Pedidos */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 p-3 border border-poker-gold/30 rounded-lg bg-poker-black/50">
+              <input 
+                type="checkbox" 
+                id="featured"
+                checked={formData.featured}
+                onChange={(e) => setFormData(prev => ({ ...prev, featured: e.target.checked }))}
+                className="w-5 h-5 accent-poker-gold"
+              />
+              <label htmlFor="featured" className="text-sm font-medium text-white cursor-pointer flex items-center gap-2">
+                <span className="text-lg">👍</span>
+                <div>
+                  <div className="font-medium">Marcar como mais pedido</div>
+                  <div className="text-xs text-gray-400">Pratos mais pedidos aparecem na seção principal do site (máximo 3)</div>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Nome e Preço */}
@@ -530,7 +563,7 @@ export const MenuItemForm = ({ item, open, onClose }: MenuItemFormProps) => {
                       Arraste uma imagem ou clique aqui
                     </span>
                     <span className="text-gray-400 text-sm">
-                      PNG, JPG, WEBP até 10MB
+                      PNG, JPG, WEBP - Qualquer tamanho
                     </span>
                   </motion.div>
                 )}

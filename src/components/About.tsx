@@ -7,16 +7,31 @@ import burgerImage from '../assets/burger.jpg'; // Fallback image
 
 const About = () => {
   const navigate = useNavigate();
-  const { getImageUrl, saveImage, loading, images } = useSiteImages();
+  const { getImageUrl, saveImage, loading, imagesObject } = useSiteImages();
   const [gastronomyImage, setGastronomyImage] = useState<string | null>(null);
   
   // Carrega a imagem da seção de gastronomia do Supabase
   useEffect(() => {
-    // images agora é um objeto Record<string, string>
-    if (images && 'gastronomy_image' in images) {
-      setGastronomyImage(images.gastronomy_image);
+    console.log('About - Verificando imagesObject:', imagesObject);
+    
+    // Verificar se temos a imagem de gastronomia no objeto imagesObject
+    if (imagesObject && 'gastronomy_image' in imagesObject && imagesObject.gastronomy_image) {
+      console.log('About - Imagem de gastronomia encontrada:', imagesObject.gastronomy_image);
+      setGastronomyImage(imagesObject.gastronomy_image);
+    } else {
+      console.log('About - Imagem de gastronomia não encontrada no imagesObject');
+      // Tentar obter a imagem usando getImageUrl
+      const gastroUrl = getImageUrl('gastronomy_image', '');
+      if (gastroUrl) {
+        console.log('About - Imagem de gastronomia obtida via getImageUrl:', gastroUrl);
+        setGastronomyImage(gastroUrl);
+      } else {
+        console.log('About - Usando imagem fallback para gastronomia');
+        // Manter o fallback para a imagem local
+        setGastronomyImage(null);
+      }
     }
-  }, [images]);
+  }, [imagesObject, getImageUrl]);
   
   // Função para lidar com o clique no card de gastronomia
   const handleFoodCardClick = () => {
@@ -75,8 +90,15 @@ const About = () => {
                 alt="Hambúrguer premium com batata frita" 
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 onError={(e) => {
-                  // Fallback para a imagem local se a URL do Supabase falhar
+                  console.error('Erro ao carregar imagem de gastronomia:', gastronomyImage);
+                  // Primeiro tentar o fallback local
                   e.currentTarget.src = burgerImage;
+                  // Se ainda falhar, usar um placeholder confiável
+                  e.currentTarget.onerror = () => {
+                    console.error('Erro ao carregar imagem de fallback local');
+                    e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Gastronomia';
+                    e.currentTarget.onerror = null; // Evitar loops infinitos
+                  };
                 }}
               />
             </div>

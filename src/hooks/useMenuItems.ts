@@ -50,7 +50,8 @@ export const useMenuItems = () => {
         description: item.description,
         price: item.price,
         image_url: item.image_url,
-        category: item.category || 'Porções'
+        category: item.category || 'Porções',
+        featured: item.featured || false
       };
       
       console.log('Item processado para adicionar:', itemToAdd);
@@ -99,6 +100,7 @@ export const useMenuItems = () => {
         price: updates.price,
         image_url: updates.image_url,
         category: updates.category,
+        featured: updates.featured,
         updated_at: new Date().toISOString()
       };
       
