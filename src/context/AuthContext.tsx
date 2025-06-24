@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { loginAdminUser, AdminUser } from '@/services/adminAuthService';
+import { supabase } from '@/integrations/supabase/client';
+
+// Chave para armazenar a sessão no localStorage
+const ADMIN_SESSION_KEY = 'admin_session';
 
 interface AuthContextType {
   isLoggedIn: boolean;
@@ -12,15 +16,50 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Inicializar estado com valores do localStorage para evitar flash de conteúdo não autenticado
+  const initSession = () => {
+    try {
+      const savedSession = localStorage.getItem(ADMIN_SESSION_KEY);
+      if (savedSession) {
+        const sessionData = JSON.parse(savedSession);
+        if (new Date(sessionData.expires_at) > new Date()) {
+          return {
+            isLoggedIn: true,
+            currentUser: sessionData.user
+          };
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao inicializar sessão:', e);
+    }
+    return {
+      isLoggedIn: false,
+      currentUser: null
+    };
+  };
+  
+  const initialState = initSession();
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(initialState.isLoggedIn);
+  const [currentUser, setCurrentUser] = useState<AdminUser | null>(initialState.currentUser);
+  const [isLoading, setIsLoading] = useState<boolean>(!initialState.isLoggedIn);
   const [error, setError] = useState<string | null>(null);
 
+  // Efeito para verificar e renovar a sessão
   useEffect(() => {
     const checkSession = async () => {
+      // Se já temos um usuário do estado inicial, não precisamos verificar novamente
+      if (isLoggedIn && currentUser) {
+        console.log('AuthContext: Sessão já inicializada com:', currentUser);
+        // Renovar a sessão para garantir que não expire
+        renewSession(currentUser);
+        setIsLoading(false);
+        return;
+      }
+      
       try {
-        const savedSession = localStorage.getItem('admin_session');
+        // Verificar sessão salva no localStorage
+        const savedSession = localStorage.getItem(ADMIN_SESSION_KEY);
+        
         if (savedSession) {
           const sessionData = JSON.parse(savedSession);
           const { user, expires_at } = sessionData;
@@ -29,11 +68,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('AuthContext: Sessão restaurada para:', user);
             setIsLoggedIn(true);
             setCurrentUser(user);
+            // Renovar a sessão para garantir que não expire
+            renewSession(user);
             setIsLoading(false);
             return;
           } else {
             console.log('AuthContext: Sessão expirada, removendo...');
-            localStorage.removeItem('admin_session');
+            localStorage.removeItem(ADMIN_SESSION_KEY);
           }
         }
 
@@ -42,16 +83,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setCurrentUser(null);
       } catch (error) {
         console.error('AuthContext: Erro ao verificar sessão:', error);
-        localStorage.removeItem('admin_session');
+        localStorage.removeItem(ADMIN_SESSION_KEY);
         setIsLoggedIn(false);
         setCurrentUser(null);
       } finally {
         setIsLoading(false);
       }
     };
+    
+    // Função para renovar a sessão
+    const renewSession = (user: AdminUser) => {
+      const session = {
+        user,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      };
+      localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+    };
 
     checkSession();
   }, []);
+
+  // Função para renovar a sessão quando houver atividade
+  const setupActivityListeners = () => {
+    const handleActivity = () => {
+      if (isLoggedIn && currentUser) {
+        const session = {
+          user: currentUser,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+        };
+        localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
+      }
+    };
+    
+    // Renovar sessão em eventos de atividade do usuário
+    window.addEventListener('mousemove', handleActivity);
+    window.addEventListener('keydown', handleActivity);
+    window.addEventListener('click', handleActivity);
+    window.addEventListener('focus', handleActivity);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleActivity);
+      window.removeEventListener('keydown', handleActivity);
+      window.removeEventListener('click', handleActivity);
+      window.removeEventListener('focus', handleActivity);
+    };
+  };
+  
+  // Configurar listeners de atividade
+  useEffect(() => {
+    return setupActivityListeners();
+  }, [isLoggedIn, currentUser]);
 
   const login = async (username: string, password: string) => {
     try {
@@ -65,12 +146,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Usuário ou senha inválidos.' };
       }
 
+      // Criar uma sessão com validade de 24 horas
       const session = {
         user,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       };
 
-      localStorage.setItem('admin_session', JSON.stringify(session));
+      // Salvar no localStorage para persistência
+      localStorage.setItem(ADMIN_SESSION_KEY, JSON.stringify(session));
 
       setCurrentUser(user);
       setError(null);
@@ -89,7 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setIsLoggedIn(false);
       setCurrentUser(null);
-      localStorage.removeItem('admin_session');
+      localStorage.removeItem(ADMIN_SESSION_KEY);
       console.log('✅ Logout realizado com sucesso');
     } catch (error) {
       console.error('❌ Erro durante logout:', error);

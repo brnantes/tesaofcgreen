@@ -1,27 +1,29 @@
-
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useSiteImages } from '@/hooks/useSiteImages';
-import { Upload, Eye, Image, FileImage, LayoutDashboard, Check, Loader2, Search, X, Filter } from 'lucide-react';
+import { Upload, Eye, Image, FileImage, LayoutDashboard, Check, Loader2, RefreshCw, Search, Trash2, X, Filter } from 'lucide-react';
 import { HeroBannerModal } from './HeroBannerModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { toast } from 'sonner';
+import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle, DialogHeader } from '@/components/ui/dialog';
+import { toast } from 'sonner';
 
 const ImagesSection = () => {
-  const { images, loading, saveImage, uploadImage, deleteImage } = useSiteImages();
+  console.log('Renderizando ImagesSection');
+  const { images: imagesList, imagesObject, loading, saveImage, uploadImage, deleteImage, fetchImages } = useSiteImages();
+  console.log('Dados recebidos do hook:', { imagesList, loading });
   const [formData, setFormData] = useState({
     hero_background: '',
     about_image: '',
     contact_background: '',
     tournaments_background: '',
-    menu_background: ''
+    menu_background: '',
+    gastronomy_image: ''
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -56,6 +58,12 @@ const ImagesSection = () => {
       component: 'About.tsx'
     },
     {
+      key: 'gastronomy_image',
+      label: 'Imagem da Seção Gastronomia',
+      description: 'Imagem do card de gastronomia (800x600px recomendado)',
+      component: 'About.tsx'
+    },
+    {
       key: 'contact_background',
       label: 'Imagem de Fundo do Contato',
       description: 'Imagem de fundo da seção de contato (1920x1080px recomendado)',
@@ -69,36 +77,58 @@ const ImagesSection = () => {
     }
   ];
 
-  // Função para carregar as imagens disponíveis na pasta public/lovable-uploads
+  // Efeito para gerar a lista de imagens disponíveis a partir das imagens do site
   useEffect(() => {
-    // Carrega as imagens reais do storage (Supabase)
-    // O array abaixo foi preenchido dinamicamente a partir do storage
-    setAvailableImages([
-      '1749394280040-amj4zvxioam.jpeg',
-      '1749900859889-x7szc5hm7j.jpg',
-      '1750565113251-ha0agitn557.png',
-      'lovable-uploads/fpzukvhdfoi_1750621183265.jpg',
-      'lovable-uploads/general/5cedotbc9y_1750635891615.jpg',
-      'lovable-uploads/general/afhkpi053qt_1750633895289.jpg',
-      'lovable-uploads/general/napefbiz6hk_1750635647791.jpg',
-      'lovable-uploads/general/wckcpdynbhq_1750637176845.jpg',
-      'lovable-uploads/hero_background/0c4j9a59islc_1750634168361.jpg',
-      'lovable-uploads/hero_background/0jf09x3fnra_1750634189495.jpg',
-      'lovable-uploads/hero_background/4qrwrbeqycq_1750633609265.jpg',
-      'lovable-uploads/hero_background/nfzftniaq7l_1750633644760.jpg',
-      'lovable-uploads/hero_background/slivts7f6o_1750633922512.jpg'
-    ]);
-  }, []);
+    // Usar as URLs completas em vez de apenas os nomes dos arquivos
+    const imageUrls = imagesList.map(img => img.image_url);
+    
+    // Remover duplicatas usando Set
+    const uniqueImageUrls = [...new Set(imageUrls)];
+    console.log('Lista de imagens únicas carregadas:', uniqueImageUrls.length);
+    console.log('Exemplos de URLs:', uniqueImageUrls.slice(0, 2));
+    
+    setAvailableImages(uniqueImageUrls);
+  }, [imagesList]);
+  
+  // Função para apagar uma imagem
+  const handleDeleteImage = async (imageUrl: string) => {
+    try {
+      // Encontrar o objeto de imagem correspondente à URL
+      const imageToDelete = imagesList.find(img => img.image_url === imageUrl);
+      
+      if (!imageToDelete) {
+        toast.error('Imagem não encontrada no sistema.');
+        return;
+      }
+      
+      // Confirmar antes de apagar
+      if (confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
+        await deleteImage(imageToDelete);
+        toast.success('Imagem apagada com sucesso!');
+        
+        // Remover a imagem selecionada se for a que foi apagada
+        if (selectedImage === imageUrl) {
+          setSelectedImage(null);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao apagar imagem:', error);
+      toast.error('Não foi possível apagar a imagem.');
+    }
+  };
+
   
   // Filtragem de imagens com base na busca e no filtro selecionado
   const filteredImages = useMemo(() => {
     let filtered = [...availableImages];
     
     // Aplicar filtro de busca
-    if (searchQuery.trim()) {
+    if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(img => {
-        const filename = img.split('/').pop()?.toLowerCase() || '';
+      filtered = filtered.filter(imgUrl => {
+        // Extrair o nome do arquivo da URL completa
+        const parts = imgUrl.split('/');
+        const filename = parts[parts.length - 1].toLowerCase();
         return filename.includes(query);
       });
     }
@@ -112,13 +142,16 @@ const ImagesSection = () => {
         'about_image': ['about', 'restaurant'],
         'contact_background': ['contact', 'background'],
         'tournaments_background': ['tournament', 'poker', 'cards', 'chips'],
-        'menu_background': ['menu', 'food', 'burger', 'hamburger']
+        'menu_background': ['menu', 'food', 'burger', 'hamburger'],
+        'gastronomy_image': ['gastronomy', 'food', 'burger', 'hamburger']
       };
       
       const keywords = filterKeywords[selectedFilter] || [];
-      if (keywords.length > 0) {
-        filtered = filtered.filter(img => {
-          const filename = img.split('/').pop()?.toLowerCase() || '';
+      if (keywords.length) {
+        filtered = filtered.filter(imgUrl => {
+          // Extrair o nome do arquivo da URL completa
+          const parts = imgUrl.split('/');
+          const filename = parts[parts.length - 1].toLowerCase();
           return keywords.some(keyword => filename.includes(keyword));
         });
       }
@@ -165,10 +198,10 @@ const ImagesSection = () => {
     }
   }, [selectedImage]);
 
-  const getCurrentImageUrl = (imageType: string) => {
-    const image = images.find(img => img.type === imageType);
+  const getCurrentImageUrl = useCallback((imageType: string) => {
+    const image = imagesList.find(img => img.type === imageType);
     return image?.image_url || '';
-  };
+  }, [imagesList]);
 
   if (loading) {
     return <div className="text-center py-8 text-poker-gold">Carregando...</div>;
@@ -565,7 +598,7 @@ const ImagesSection = () => {
                     className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedImage === imageUrl ? 'border-poker-gold scale-105 shadow-lg' : 'border-transparent hover:border-poker-gold/50'}`}
                   >
                     <img 
-                      src={`https://hsubouwujfcdyuyikvbi.supabase.co/storage/v1/object/public/menu-images/${imageUrl}`} 
+                      src={imageUrl} 
                       alt={`Imagem ${index + 1}`} 
                       className="w-full h-full object-cover"
                       onError={(e) => {
@@ -597,8 +630,39 @@ const ImagesSection = () => {
                               <Eye className="w-3 h-3" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent className="bg-poker-black border-poker-gold/30 text-white">
-                            Visualizar
+                          <TooltipContent>
+                            <p>Visualizar imagem</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button 
+                              variant="outline" 
+                              size="icon" 
+                              className="h-7 w-7 rounded-full bg-poker-black/70 border-red-500/50 text-red-500 hover:bg-red-500/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // Encontrar o objeto de imagem correspondente à URL
+                                const imageToDelete = imagesList.find(img => img.image_url === imageUrl);
+                                if (imageToDelete) {
+                                  if (confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
+                                    deleteImage(imageToDelete);
+                                    if (selectedImage === imageUrl) {
+                                      setSelectedImage(null);
+                                    }
+                                  }
+                                } else {
+                                  toast.error('Imagem não encontrada no sistema.');
+                                }
+                              }}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="bg-red-950 border-red-500/50">
+                            <p>Apagar imagem</p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -609,9 +673,25 @@ const ImagesSection = () => {
                         title="Apagar imagem"
                         onClick={async (e) => {
                           e.stopPropagation();
-                          const imageObj = images.find(i => i.image_url === imageUrl);
+                          console.log('Tentando apagar imagem com URL:', imageUrl);
+                          
+                          // Procurar a imagem pelo URL exato
+                          const imageObj = imagesList.find(i => i.image_url === imageUrl);
+                          
                           if (imageObj) {
-                            await deleteImage(imageObj);
+                            console.log('Imagem encontrada para deleção:', imageObj);
+                            try {
+                              await deleteImage(imageObj);
+                              // Atualizar a lista de imagens disponíveis após a deleção
+                              setAvailableImages(prev => prev.filter(img => img !== imageUrl));
+                              toast.success('Imagem apagada com sucesso!');
+                            } catch (error) {
+                              console.error('Erro ao apagar imagem:', error);
+                              toast.error('Não foi possível apagar a imagem.');
+                            }
+                          } else {
+                            console.error('Imagem não encontrada para deleção. URL:', imageUrl);
+                            toast.error('Imagem não encontrada no banco de dados.');
                           }
                         }}
                       >
@@ -622,13 +702,30 @@ const ImagesSection = () => {
                 ))}
               </div>
               
-              {filteredImages.length === 0 && (
+              {/* Mensagem de carregando ou nenhuma imagem encontrada */}
+              {loading ? (
+                <div className="text-center py-8 text-gray-400">
+                  <Loader2 className="w-12 h-12 mx-auto text-gray-500 mb-2 animate-spin" />
+                  <p>Carregando imagens...</p>
+                </div>
+              ) : filteredImages.length === 0 ? (
                 <div className="text-center py-8 text-gray-400">
                   <FileImage className="w-12 h-12 mx-auto text-gray-500 mb-2" />
                   <p>Nenhuma imagem encontrada</p>
-                  <p className="text-sm">Tente outro termo de busca ou faça upload de novas imagens</p>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="mt-4 bg-poker-black border-poker-gold/50 text-poker-gold hover:bg-poker-gold/10"
+                    onClick={() => {
+                      console.log('Recarregando imagens manualmente');
+                      fetchImages();
+                    }}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Recarregar imagens
+                  </Button>
                 </div>
-              )}
+              ) : null}
               
               {/* Painel de aplicação da imagem selecionada */}
               {selectedImage && (

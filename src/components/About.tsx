@@ -3,11 +3,20 @@ import { Users, Trophy, Utensils } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSiteImages } from '@/hooks/useSiteImages';
-import burgerImage from '../assets/burger.jpg';
+import burgerImage from '../assets/burger.jpg'; // Fallback image
 
 const About = () => {
   const navigate = useNavigate();
-  const { getImageUrl, saveImage, loading } = useSiteImages();
+  const { getImageUrl, saveImage, loading, images } = useSiteImages();
+  const [gastronomyImage, setGastronomyImage] = useState<string | null>(null);
+  
+  // Carrega a imagem da seção de gastronomia do Supabase
+  useEffect(() => {
+    // images agora é um objeto Record<string, string>
+    if (images && 'gastronomy_image' in images) {
+      setGastronomyImage(images.gastronomy_image);
+    }
+  }, [images]);
   
   // Função para lidar com o clique no card de gastronomia
   const handleFoodCardClick = () => {
@@ -59,16 +68,24 @@ const About = () => {
             className="group relative overflow-hidden rounded-2xl bg-green-gray-medium/50 backdrop-blur-sm border border-green-primary/20 hover:border-green-primary/40 transition-all duration-500 hover:scale-105 hover:shadow-2xl hover:shadow-green-primary/20 animate-slide-in-left cursor-pointer"
             style={{ animationDelay: '0.4s' }}
           >
-            {/* Imagem importada diretamente dos assets */}
-            <img 
-              src={burgerImage} 
-              alt="Hambúrguer premium com batata frita" 
-              className="absolute inset-0 w-full h-full object-cover"
-              style={{ objectFit: 'cover' }}
-            />
+            {/* Imagem de fundo */}
+            <div className="absolute inset-0 opacity-70 group-hover:opacity-80 transition-opacity duration-500">
+              <img 
+                src={gastronomyImage || burgerImage} 
+                alt="Hambúrguer premium com batata frita" 
+                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                onError={(e) => {
+                  // Fallback para a imagem local se a URL do Supabase falhar
+                  e.currentTarget.src = burgerImage;
+                }}
+              />
+            </div>
             
-            {/* Conteúdo com fundo semitransparente para melhor legibilidade */}
-            <div className="relative z-10 p-8 text-center space-y-4 bg-green-black/80 rounded-xl m-4">
+            {/* Overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-green-black/90 via-green-black/60 to-green-black/30"></div>
+            
+            {/* Conteúdo */}
+            <div className="relative z-10 p-8 text-center space-y-4">
               <div className="w-16 h-16 bg-green-primary/20 rounded-full flex items-center justify-center mx-auto group-hover:bg-green-primary/30 group-hover:scale-110 transition-all duration-300">
                 <Utensils className="w-8 h-8 text-green-primary group-hover:scale-110 transition-transform duration-300" />
               </div>

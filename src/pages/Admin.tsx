@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { ChampionsSection } from '@/components/admin/ChampionsSection';
 import { ImagesSection } from '@/components/admin/ImagesSection';
 import UsersSection from '@/components/admin/UsersSection';
 import { useAuth } from '@/context/AuthContext';
+import { useSystemStats } from '@/hooks/useSystemStats';
 import { 
   LogOut, 
   Calendar, 
@@ -29,6 +30,7 @@ import {
 const Admin = () => {
   const { isLoggedIn, logout, currentUser } = useAuth();
   const [activeSection, setActiveSection] = useState('dashboard');
+  const { stats, loading: statsLoading } = useSystemStats();
   
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: TrendingUp },
@@ -41,29 +43,19 @@ const Admin = () => {
     { id: 'images', label: 'Galeria', icon: Image },
   ];
 
-  const getTodayTournament = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
-    
-    const tournaments = {
-      0: { name: 'Torneio Domingo', time: '15:00', prize: 'R$ 500' },
-      1: { name: 'Segunda Fair Play', time: '20:00', prize: 'R$ 200' },
-      2: { name: 'Terça Turbo', time: '19:30', prize: 'R$ 300' },
-      3: { name: 'Quarta Champions', time: '20:00', prize: 'R$ 400' },
-      4: { name: 'Quinta Power', time: '19:00', prize: 'R$ 350' },
-      5: { name: 'Sexta VIP', time: '21:00', prize: 'R$ 600' },
-      6: { name: 'Sábado Master', time: '16:00', prize: 'R$ 800' },
-    };
-    
-    return tournaments[dayOfWeek] || { name: 'Sem torneio hoje', time: '--', prize: '--' };
-  };
 
-  const todayTournament = getTodayTournament();
 
   const renderContent = () => {
     switch(activeSection) {
       case 'dashboard':
-        return (
+        return statsLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="flex flex-col items-center gap-2">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-poker-gold"></div>
+              <p className="text-gray-400">Carregando dados do sistema...</p>
+            </div>
+          </div>
+        ) : (
           <div className="space-y-6">
             {/* Torneio de Hoje - Destaque */}
             <Card className="bg-gradient-to-r from-poker-gold/20 to-poker-gold/10 border-poker-gold/40">
@@ -85,17 +77,17 @@ const Admin = () => {
                 <div className="grid md:grid-cols-3 gap-4">
                   <div className="text-center p-4 bg-poker-black/50 rounded-lg">
                     <Calendar className="w-6 h-6 text-poker-gold mx-auto mb-2" />
-                    <h3 className="text-lg font-bold text-white">{todayTournament.name}</h3>
+                    <h3 className="text-lg font-bold text-white">{stats.todayTournament?.name || 'Sem torneio hoje'}</h3>
                     <p className="text-gray-400">Nome do Evento</p>
                   </div>
                   <div className="text-center p-4 bg-poker-black/50 rounded-lg">
                     <Clock className="w-6 h-6 text-poker-gold mx-auto mb-2" />
-                    <h3 className="text-lg font-bold text-white">{todayTournament.time}</h3>
+                    <h3 className="text-lg font-bold text-white">{stats.todayTournament?.time || '--'}</h3>
                     <p className="text-gray-400">Horário de Início</p>
                   </div>
                   <div className="text-center p-4 bg-poker-black/50 rounded-lg">
                     <TrendingUp className="w-6 h-6 text-poker-gold mx-auto mb-2" />
-                    <h3 className="text-lg font-bold text-white">{todayTournament.prize}</h3>
+                    <h3 className="text-lg font-bold text-white">{stats.todayTournament?.prize || '--'}</h3>
                     <p className="text-gray-400">Premiação</p>
                   </div>
                 </div>
@@ -103,13 +95,17 @@ const Admin = () => {
             </Card>
 
             {/* Cards de Estatísticas */}
-            <div className="grid md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <Card className="bg-poker-gray-medium/70 border-poker-gold/20">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-400 text-sm">Total Produtos</p>
-                      <h3 className="text-2xl font-bold text-white">28</h3>
+                      {statsLoading ? (
+                        <h3 className="text-2xl font-bold text-white">Carregando...</h3>
+                      ) : (
+                        <h3 className="text-2xl font-bold text-white">{stats.menuItemsCount}</h3>
+                      )}
                     </div>
                     <ChefHat className="w-8 h-8 text-poker-gold" />
                   </div>
@@ -121,7 +117,11 @@ const Admin = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-400 text-sm">Torneios Ativos</p>
-                      <h3 className="text-2xl font-bold text-white">7</h3>
+                      {statsLoading ? (
+                        <h3 className="text-2xl font-bold text-white">Carregando...</h3>
+                      ) : (
+                        <h3 className="text-2xl font-bold text-white">{stats.tournamentsCount}</h3>
+                      )}
                     </div>
                     <Trophy className="w-8 h-8 text-poker-gold" />
                   </div>
@@ -133,7 +133,11 @@ const Admin = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-400 text-sm">Campeões</p>
-                      <h3 className="text-2xl font-bold text-white">15</h3>
+                      {statsLoading ? (
+                        <h3 className="text-2xl font-bold text-white">Carregando...</h3>
+                      ) : (
+                        <h3 className="text-2xl font-bold text-white">{stats.championsCount}</h3>
+                      )}
                     </div>
                     <Star className="w-8 h-8 text-poker-gold" />
                   </div>
@@ -145,7 +149,11 @@ const Admin = () => {
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-gray-400 text-sm">Contatos</p>
-                      <h3 className="text-2xl font-bold text-white">42</h3>
+                      {statsLoading ? (
+                        <h3 className="text-2xl font-bold text-white">Carregando...</h3>
+                      ) : (
+                        <h3 className="text-2xl font-bold text-white">{stats.contactsCount}</h3>
+                      )}
                     </div>
                     <MessageSquare className="w-8 h-8 text-poker-gold" />
                   </div>
@@ -202,32 +210,46 @@ const Admin = () => {
         return (
           <Card className="bg-poker-gray-medium border-poker-gold/20">
             <CardHeader>
-              <CardTitle className="text-poker-gold">Contatos Recebidos</CardTitle>
+              <CardTitle className="text-xl text-white">Contatos Recentes</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="bg-poker-black p-4 rounded border border-poker-gold/20">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="text-poker-gold font-semibold">João Silva</h4>
-                    <span className="text-gray-400 text-sm">06/01/2025</span>
+            <CardContent className="space-y-4">
+              {statsLoading ? (
+                <div className="text-white">Carregando contatos...</div>
+              ) : stats.recentContacts && stats.recentContacts.length > 0 ? (
+                stats.recentContacts.map((contact) => (
+                  <div key={contact.id} className="bg-poker-black p-4 rounded border border-poker-gold/20">
+                    <div className="flex justify-between items-start mb-2">
+                      <h4 className="text-poker-gold font-semibold">{contact.name}</h4>
+                      <span className="text-gray-400 text-sm">
+                        {new Date(contact.created_at).toLocaleDateString('pt-BR')}
+                      </span>
+                    </div>
+                    <p className="text-gray-300 text-sm">
+                      {contact.email} | {contact.phone || 'Sem telefone'}
+                    </p>
+                    <p className="text-gray-400 text-sm mt-2">{contact.message}</p>
                   </div>
-                  <p className="text-gray-300 text-sm">joao@email.com | (11) 99999-9999</p>
-                  <p className="text-gray-400 text-sm mt-2">Interessado em receber agenda de torneios</p>
-                </div>
-                <div className="bg-poker-black p-4 rounded border border-poker-gold/20">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="text-poker-gold font-semibold">Maria Santos</h4>
-                    <span className="text-gray-400 text-sm">05/01/2025</span>
-                  </div>
-                  <p className="text-gray-300 text-sm">maria@email.com | (11) 88888-8888</p>
-                  <p className="text-gray-400 text-sm mt-2">Interessada em receber agenda de torneios</p>
-                </div>
-              </div>
+                ))
+              ) : (
+                <div className="text-gray-400">Nenhum contato recente encontrado.</div>
+              )}
             </CardContent>
           </Card>
         );
+      case 'menu':
+        return <MenuItemsList />;
+      case 'tournaments':
+        return <TournamentsSection />;
+      case 'champions':
+        return <ChampionsSection />;
+      case 'banners':
+        return <BannersSection />;
+      case 'images':
+        return <ImagesSection />;
+      case 'users':
+        return <UsersSection />;
       default:
-        return <div>Seção não encontrada</div>;
+        return <div className="p-8 text-center text-gray-400">Seção não encontrada</div>;
     }
   };
   
