@@ -1,102 +1,99 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { internalLogin, getMasterUsername } from './InternalAuth';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { loginAdminUser, AdminUser } from '@/services/adminAuthService';
 
 interface AuthContextType {
   isLoggedIn: boolean;
-  currentUsername: string | null;
-  loading: boolean;
-  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>; // agora login local
+  currentUser: AdminUser | null;
+  isLoading: boolean;
+  login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
-  // createUser removido para login local
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
-  const [currentUsername, setCurrentUsername] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<AdminUser | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Verificar sessão atual ao carregar
   useEffect(() => {
     const checkSession = async () => {
       try {
-        // Verificar se há sessão salva no localStorage
         const savedSession = localStorage.getItem('admin_session');
         if (savedSession) {
           const sessionData = JSON.parse(savedSession);
-          const { username, timestamp } = sessionData;
-          
-          // Verificar se a sessão não está expirada (24 horas)
-          const sessionAge = Date.now() - timestamp;
-          const MAX_SESSION_AGE = 24 * 60 * 60 * 1000; // 24 horas em ms
-          
-          if (sessionAge < MAX_SESSION_AGE) {
-            console.log(' AuthContext: Sessão restaurada para:', username);
+          const { user, expires_at } = sessionData;
+
+          if (new Date(expires_at) > new Date()) {
+            console.log('AuthContext: Sessão restaurada para:', user);
             setIsLoggedIn(true);
-            setCurrentUsername(username);
-            setLoading(false);
+            setCurrentUser(user);
+            setIsLoading(false);
             return;
           } else {
-            console.log(' AuthContext: Sessão expirada, removendo...');
+            console.log('AuthContext: Sessão expirada, removendo...');
             localStorage.removeItem('admin_session');
           }
         }
-        
-        // Se não há sessão válida, manter deslogado
-        console.log(' AuthContext: Nenhuma sessão válida encontrada');
+
+        console.log('AuthContext: Nenhuma sessão válida encontrada');
         setIsLoggedIn(false);
-        setCurrentUsername(null);
+        setCurrentUser(null);
       } catch (error) {
-        console.error(' AuthContext: Erro ao verificar sessão:', error);
+        console.error('AuthContext: Erro ao verificar sessão:', error);
         localStorage.removeItem('admin_session');
         setIsLoggedIn(false);
-        setCurrentUsername(null);
+        setCurrentUser(null);
       } finally {
-        setLoading(false);
+        setIsLoading(false);
       }
     };
-    
+
     checkSession();
   }, []);
 
   const login = async (username: string, password: string) => {
-    setLoading(true);
     try {
-      const userResult = internalLogin(username, password);
-      
-      if (userResult) {
-        setIsLoggedIn(true);
-        setCurrentUsername(username);
-        localStorage.setItem('admin_session', JSON.stringify({ username, timestamp: Date.now() }));
-        console.log('✅ Login bem-sucedido para:', username);
-        return { success: true };
-      } else {
-        setIsLoggedIn(false);
-        setCurrentUsername('');
+      setIsLoading(true);
+
+      const user = await loginAdminUser({ username, password });
+
+      if (!user) {
         console.log('❌ Login falhou: Credenciais inválidas');
+        setError('Usuário ou senha inválidos.');
         return { success: false, error: 'Usuário ou senha inválidos.' };
       }
+
+      const session = {
+        user,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      };
+
+      localStorage.setItem('admin_session', JSON.stringify(session));
+
+      setCurrentUser(user);
+      setError(null);
+      setIsLoggedIn(true);
+      return { success: true };
     } catch (error) {
-      console.error('❌ Erro durante login:', error);
-      setIsLoggedIn(false);
-      setCurrentUsername('');
+      console.error('Erro durante login:', error);
+      setError('Ocorreu um erro durante o login.');
       return { success: false, error: 'Ocorreu um erro durante o login' };
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
-    // Remover sessão do localStorage
-    localStorage.removeItem('admin_session');
-    
-    console.log(' AuthContext: Logout realizado e sessão removida');
-    setIsLoggedIn(false);
-    setCurrentUsername(null);
-    navigate('/');
+    try {
+      setIsLoggedIn(false);
+      setCurrentUser(null);
+      localStorage.removeItem('admin_session');
+      console.log('✅ Logout realizado com sucesso');
+    } catch (error) {
+      console.error('❌ Erro durante logout:', error);
+    }
   };
   
   // createUser removido para login local
@@ -105,8 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <AuthContext.Provider
       value={{
         isLoggedIn,
-        currentUsername,
-        loading,
+        currentUser,
+        isLoading,
         login,
         logout
       }}

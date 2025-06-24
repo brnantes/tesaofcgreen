@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import Header from '@/components/Header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,11 +23,11 @@ import {
   ChefHat,
   Image,
   MessageSquare,
-  Shield
+  Shield,
 } from 'lucide-react';
 
 const Admin = () => {
-  const { isLoggedIn, logout } = useAuth();
+  const { isLoggedIn, logout, currentUser } = useAuth();
   const [activeSection, setActiveSection] = useState('dashboard');
   
   const menuItems = [
@@ -266,10 +265,11 @@ const Admin = () => {
             </nav>
             
             <div className="mt-8 pt-8 border-t border-poker-gold/20">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-all text-gray-300">
+                <Users className="w-5 h-5" />
                 <div>
-                  <p className="text-gray-400 text-xs">Logado como</p>
-                  <p className="text-poker-gold font-semibold">Administrador</p>
+                  <p className="text-sm font-medium">{currentUser?.username || 'Admin'}</p>
+                  <p className="text-xs text-gray-500">Administrador</p>
                 </div>
               </div>
               
