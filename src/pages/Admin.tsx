@@ -7,7 +7,7 @@ import { MenuItemsList } from '@/components/admin/MenuItemsList';
 import { BannersSection } from '@/components/admin/BannersSection';
 import { TournamentsSection } from '@/components/admin/TournamentsSection';
 import { ChampionsSection } from '@/components/admin/ChampionsSection';
-import { ImagesSection } from '@/components/admin/ImagesSection';
+import ImagesSection from '@/components/admin/ImagesSection';
 import UsersSection from '@/components/admin/UsersSection';
 import { useAuth } from '@/context/AuthContext';
 import { useSystemStats } from '@/hooks/useSystemStats';
