@@ -281,8 +281,7 @@ const BUCKET_NAME = 'menu-images';
       const { data: existingData, error: queryError } = await supabase
         .from('site_content')
         .select('*')
-        .eq('type', 'site_image')
-        .eq('title', imageType)
+        .eq('type', imageType)
         .maybeSingle();
       
       if (queryError) {
@@ -318,7 +317,7 @@ const BUCKET_NAME = 'menu-images';
         const { data, error } = await supabase
           .from('site_content')
           .insert([{
-            type: 'site_image',
+            type: imageType,
             title: imageType,
             content: imageUrl
           }])
