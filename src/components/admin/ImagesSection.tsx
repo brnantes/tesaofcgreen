@@ -17,6 +17,11 @@ const ImagesSection = () => {
   console.log('Renderizando ImagesSection');
   const { images: imagesList, imagesObject, loading, saveImage, uploadImage, deleteImage, fetchImages } = useSiteImages();
   console.log('Dados recebidos do hook:', { imagesList, loading });
+  
+  // Estado para paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const [imagesPerPage] = useState(12); // Número de imagens por página
+  
   const [formData, setFormData] = useState({
     hero_background: '',
     about_image: '',
@@ -26,30 +31,12 @@ const ImagesSection = () => {
     gastronomy_image: ''
   });
   
-  // Inicializar formData com as imagens existentes do site
-  useEffect(() => {
-    if (imagesList.length > 0) {
-      console.log('Inicializando formData com imagens existentes');
-      const newFormData = { ...formData };
-      
-      // Para cada tipo de imagem, buscar a URL correspondente
-      Object.keys(formData).forEach(imageType => {
-        const siteImage = imagesList.find(img => img.type === imageType);
-        if (siteImage?.image_url) {
-          console.log(`Encontrada imagem para ${imageType}:`, siteImage.image_url);
-          newFormData[imageType] = siteImage.image_url;
-        }
-      });
-      
-      console.log('FormData inicializado:', newFormData);
-      setFormData(newFormData);
-    }
-  }, [imagesList]);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [heroBannerModalOpen, setHeroBannerModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('site_images');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [showSectionSelect, setShowSectionSelect] = useState<string | null>(null);
   const [availableImages, setAvailableImages] = useState<string[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [selectedImageType, setSelectedImageType] = useState<string | null>(null);
@@ -125,7 +112,8 @@ const ImagesSection = () => {
       if (confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
         await deleteImage(imageToDelete);
         toast.success('Imagem apagada com sucesso!');
-        
+        // Atualizar lista de imagens após deletar
+        await fetchImages();
         // Remover a imagem selecionada se for a que foi apagada
         if (selectedImage === imageUrl) {
           setSelectedImage(null);
@@ -137,14 +125,12 @@ const ImagesSection = () => {
     }
   };
 
-  
   // Filtragem de imagens com base na busca e no filtro selecionado
   const filteredImages = useMemo(() => {
     // Filtrar imagens inválidas primeiro (URLs vazias ou que não começam com http)
     let filtered = availableImages.filter(url => {
       return url && url.trim() !== '' && url.startsWith('http');
-    });
-    
+    })
     // Aplicar filtro de busca
     if (searchQuery?.trim()) {
       const query = searchQuery.toLowerCase();
@@ -198,7 +184,7 @@ const ImagesSection = () => {
       
       console.log(`Salvando imagem para ${imageType} com URL:`, imageUrl);
       await saveImage(imageType, imageUrl);
-      
+      await fetchImages();
       // Atualizar o formData após salvar
       setFormData(prev => ({
         ...prev,
@@ -247,65 +233,155 @@ const ImagesSection = () => {
     // handleSave(field);
   };
 
-
   const handleSelectImage = useCallback((imageUrl: string) => {
     setSelectedImage(imageUrl);
+    // Se um tipo de imagem estiver selecionado, atualize o formData
+    if (selectedImageType && imageUrl) {
+      setFormData(prev => ({
+        ...prev,
+        [selectedImageType]: imageUrl
+      }));
+    }
     // Se a imagem já estiver selecionada, mostrar a prévia
     if (selectedImage === imageUrl) {
       setPreviewImage(imageUrl);
       setPreviewDialogOpen(true);
     }
-  }, [selectedImage]);
+  }, [selectedImage, selectedImageType]);
 
+  // Função para obter a URL atual da imagem para um tipo específico
   const getCurrentImageUrl = useCallback((imageType: string) => {
     const image = imagesList.find(img => img.type === imageType);
     return image?.image_url || '';
   }, [imagesList]);
+  
+  // Função para mudar de página
+  const paginate = (pageNumber: number) => setCurrentPage(pageNumber);
+  
+  // Função para gerar URL de thumbnail otimizada
+  const getOptimizedImageUrl = (url: string) => {
+    // Se for uma URL do Supabase Storage, adicionar parâmetros de transformação
+    if (url.includes('supabase.co') && url.includes('/storage/v1/object/public/')) {
+      // Adicionar parâmetros para redimensionar para thumbnail
+      return `${url}?width=300&quality=80`;
+    }
+    return url;
+  };
 
-  if (loading) {
-    return <div className="text-center py-8 text-poker-gold">Carregando...</div>;
+  // Verificar se está carregando
+      
+      console.log(`Salvando imagem para ${imageType} com URL:`, imageUrl);
+      await saveImage(imageType, imageUrl);
+      await fetchImages();
+      // Atualizar o formData após salvar
+      setFormData(prev => ({
+        ...prev,
+        [imageType]: imageUrl
+      }));
+      
+      // Limpar a seleção após salvar
+      setSelectedImage(null);
+      
+      // Mostrar mensagem de sucesso com o nome amigável da seção
+      const typeName = imageTypes.find(t => t.key === imageType)?.label || imageType;
+      toast.success(`Imagem aplicada com sucesso à seção ${typeName}!`);
+    } catch (error) {
+      console.error('Erro ao salvar imagem:', error);
+      toast.error("Não foi possível salvar a imagem.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChange = (field: string, value: string) => {
+    console.log(`Aplicando imagem para ${field}:`, value);
+    // Verificar se o campo e valor são válidos
+    if (!field || !value) {
+      console.error('Campo ou valor inválidos:', { field, value });
+      toast.error("Dados inválidos para aplicar imagem.");
+      return;
+    }
+    // Atualizar o formData com a nova imagem
+    setFormData(prev => {
+      const newFormData = { ...prev, [field]: value };
+      console.log('Novo formData:', newFormData);
+      return newFormData;
+    });
+    // Atualizar o botão de aplicar imagem
+    const typeName = imageTypes.find(t => t.key === field)?.label || field;
+    toast.success(`Imagem selecionada para ${typeName}. Clique em "Aplicar Imagem" para salvar.`);
+    // Destacar visualmente a seção selecionada
+    setSelectedImageType(field);
+    // Salvar imediatamente se for necessário
+    // handleSave(field);
+  };
+
+
+
+
+
+// Implementação completa da função getOptimizedImageUrl
+const getOptimizedImageUrl = (url: string) => {
+  // Se for uma URL do Supabase Storage, adicionar parâmetros de transformação
+  if (url.includes('supabase.co') && url.includes('/storage/v1/object/public/')) {
+    // Adicionar parâmetros para redimensionar para thumbnail
+    return `${url}?width=300&quality=80`;
   }
+  return url;
+};
+// Verificar se está carregando
+if (loading) {
+return (
+  <div>
+    <div className="text-center py-8 text-poker-gold">Carregando...</div>
+  </div>
+);
+}
+// Calcular índices para paginação
+const indexOfLastImage = currentPage * imagesPerPage;
+const indexOfFirstImage = indexOfLastImage - imagesPerPage;
+const currentImages = filteredImages.slice(indexOfFirstImage, indexOfLastImage);
 
-  return (
-    <div>
-      {/* Modal para gerenciar o banner principal */}
-      <HeroBannerModal
-        open={heroBannerModalOpen}
-        onOpenChange={setHeroBannerModalOpen}
-      />
-      <Card className="bg-poker-gray-medium border-poker-gold/20">
-        <CardHeader>
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div>
-              <CardTitle className="text-poker-gold">Gerenciar Imagens do Site</CardTitle>
-              <p className="text-gray-400 text-sm">
-                Gerencie as imagens principais exibidas no site. Escolha entre usar URLs externas ou imagens da galeria local.
-              </p>
-            </div>
-            <Button 
-              onClick={() => setHeroBannerModalOpen(true)}
-              className="bg-green-primary hover:bg-green-primary/90 text-white"
-            >
-              <Image className="w-4 h-4 mr-2" />
-              Trocar Banner Principal
-            </Button>
+const totalPages = Math.ceil(filteredImages.length / imagesPerPage);
+// Retornar a interface do componente
+return (
+  <div>
+    {/* Modal para gerenciar o banner principal */}
+    <HeroBannerModal
+      open={heroBannerModalOpen}
+      onOpenChange={setHeroBannerModalOpen}
+    />
+    <Card className="bg-poker-gray-medium border-poker-gold/20">
+      <CardHeader>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-poker-gold">Gerenciar Imagens do Site</CardTitle>
+            <p className="text-gray-400 text-sm">
+              Gerencie as imagens principais exibidas no site. Escolha entre usar URLs externas ou imagens da galeria local.
+            </p>
           </div>
-        </CardHeader>
-      <CardContent className="space-y-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid grid-cols-2 bg-poker-black w-full mb-6">
-            <TabsTrigger value="site_images" className="data-[state=active]:bg-poker-gold data-[state=active]:text-poker-black">
-              <LayoutDashboard className="w-4 h-4 mr-2" />
-              Imagens do Site
-            </TabsTrigger>
-            <TabsTrigger value="gallery" className="data-[state=active]:bg-poker-gold data-[state=active]:text-poker-black">
-              <FileImage className="w-4 h-4 mr-2" />
-              Galeria de Imagens
-            </TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="site_images" className="space-y-6">
           {imageTypes.map((imageType) => {
+            // Se for o banner principal, adicione uma observação sobre o modal
+            const currentUrl = getCurrentImageUrl(imageType.key);
+            const formUrl = formData[imageType.key] || currentUrl;
+            const isHeroBanner = imageType.key === 'hero_background';
+            
+            return (
+              <div key={imageType.key} className="space-y-4 p-4 bg-poker-black/30 rounded-lg border border-poker-gold/10">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h4 className="text-poker-gold font-medium">{imageType.label}</h4>
+                    <p className="text-gray-400 text-sm">{imageType.description}</p>
+                  </div>
+                  {isHeroBanner && (
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setHeroBannerModalOpen(true)}
+                  Gerencie as imagens principais exibidas no site. Escolha entre usar URLs externas ou imagens da galeria local.
+                </p>
+              </div>
+              {imageTypes.map((imageType) => {
           // Se for o banner principal, adicione uma observação sobre o modal
           const currentUrl = getCurrentImageUrl(imageType.key);
           const formUrl = formData[imageType.key] || currentUrl;
@@ -343,7 +419,7 @@ const ImagesSection = () => {
                         // Usar diretamente um placeholder confiável
                         e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
                         e.currentTarget.onerror = null; // Evitar loops infinitos
-                        console.error('Erro ao carregar imagem:', imageUrl);
+                        console.error('Erro ao carregar imagem:', currentUrl);
                       }}
                     />
                     <Button
@@ -387,20 +463,6 @@ const ImagesSection = () => {
           <h4 className="text-poker-gold font-medium mb-2"> Dicas para imagens:</h4>
           <ul className="text-sm text-gray-300 space-y-1">
             <li>• Use imagens de alta qualidade para melhor resultado</li>
-            <li>• Recomendamos usar serviços como Unsplash, Pexels ou seu próprio servidor</li>
-            <li>• Para melhor performance, use imagens otimizadas (WebP, JPG comprimido)</li>
-            <li>• Teste sempre as URLs antes de salvar</li>
-            <li>• Ou use a galeria de imagens para escolher entre as imagens já disponíveis</li>
-          </ul>
-        </div>
-          </TabsContent>
-          
-          <TabsContent value="gallery" className="space-y-6">
-            {/* Seção de Upload de Imagem */}
-            <div className="bg-poker-black/30 p-6 rounded-lg border border-poker-gold/10 mb-6">
-              <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-4">
-                <div>
-                  <h3 className="text-poker-gold font-medium mb-1 flex items-center">
                     <Upload className="w-4 h-4 mr-2" />
                     Importar Nova Imagem
                   </h3>
@@ -554,12 +616,6 @@ const ImagesSection = () => {
                       clearInterval(progressInterval);
                       setUploadProgress(100);
                       
-                      // Adicionar a nova imagem à galeria
-                      setAvailableImages(prev => [imageUrl, ...prev]);
-                      
-                      // Selecionar a nova imagem
-                      setSelectedImage(imageUrl);
-                      
                       // Se um tipo de imagem foi selecionado, atualizar o formData
                       if (selectedImageType) {
                         // Atualizar o formData com a nova imagem para a seção selecionada
@@ -630,112 +686,86 @@ const ImagesSection = () => {
               </div>
               
               {/* Filtros de tipo de imagem */}
-              <div className="flex flex-wrap gap-2 mb-4">
+               <div className="flex flex-wrap gap-2 mb-4">
                 <Badge 
                   variant={selectedFilter === null ? "default" : "outline"}
-                  className={selectedFilter === null ? "bg-poker-gold text-poker-black" : "bg-transparent text-gray-400 hover:text-white cursor-pointer"}
                   onClick={() => setSelectedFilter(null)}
                 >
                   Todas
                 </Badge>
                 {imageTypes.map((type) => (
-                  <Badge 
-                    key={type.key} 
+                  <Badge
+                    key={type.key}
                     variant={selectedFilter === type.key ? "default" : "outline"}
-                    className={selectedFilter === type.key ? "bg-poker-gold text-poker-black" : "bg-transparent text-gray-400 hover:text-white cursor-pointer"}
                     onClick={() => setSelectedFilter(type.key)}
+                    className="cursor-pointer"
                   >
                     {type.label}
                   </Badge>
                 ))}
               </div>
               
-              {/* Grid de imagens */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {filteredImages.map((imageUrl, index) => (
-                  <div 
-                    key={index} 
-                    className={`relative aspect-video rounded-lg overflow-hidden border-2 cursor-pointer transition-all ${selectedImage === imageUrl ? 'border-poker-gold scale-105 shadow-lg' : 'border-transparent hover:border-poker-gold/50'}`}
-                  >
-                    <img 
-                      src={imageUrl} 
-                      alt={`Imagem ${index + 1}`} 
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        // Usar diretamente um placeholder confiável
-                        e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
-                        e.currentTarget.onerror = null; // Evitar loops infinitos
-                        console.error('Erro ao carregar imagem:', imageUrl);
-                      }}
-                      onClick={() => handleSelectImage(imageUrl)}
-                    />
-                    {selectedImage === imageUrl && (
-                      <div className="absolute inset-0 bg-poker-gold/20 flex items-center justify-center">
-                        <div className="bg-poker-gold text-poker-black font-semibold px-3 py-1 rounded-full text-sm">
-                          Selecionada
+              {/* Galeria de imagens */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentImages.map((imageUrl, index) => (
+                  <div key={imageUrl}>
+                    <div className="w-full h-full bg-poker-black/50 flex items-center justify-center">
+                      {/* Placeholder enquanto a imagem carrega */}
+                      <div className="absolute inset-0 flex items-center justify-center bg-poker-black/30">
+                        <Loader2 className="w-8 h-8 text-poker-gold/50 animate-spin" />
+                      </div>
+                      <img 
+                        src={getOptimizedImageUrl(imageUrl)} 
+                        alt={`Imagem ${indexOfFirstImage + index + 1}`} 
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                        onLoad={(e) => {
+                          // Remover o placeholder quando a imagem carregar
+                          const parent = e.currentTarget.parentElement;
+                          if (parent) {
+                            const placeholder = parent.querySelector('div.absolute') as HTMLElement;
+                            if (placeholder) placeholder.style.display = 'none';
+                          }
+                        }}
+                        onError={(e) => {
+                          e.currentTarget.src = '/logo-green-table.png';
+                          e.currentTarget.onerror = () => {
+                            e.currentTarget.src = 'https://placehold.co/600x400/222222/22c55e?text=Green+Table';
+                            e.currentTarget.onerror = null;
+                          };
+                          console.error('Erro ao carregar imagem:', imageUrl);
+                        }}
+                      />
+                    </div>
+                    {showSectionSelect === imageUrl && (
+                      <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-50">
+                        <div className="bg-poker-black border border-poker-gold/40 rounded-lg p-4 flex flex-col gap-2">
+                          <span className="text-poker-gold font-medium mb-2">Escolha a seção:</span>
+                          {imageTypes.map(type => (
+                            <Button
+                              key={type.key}
+                              className="mb-2 bg-poker-gold text-poker-black hover:bg-poker-gold-light"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                await handleSave(type.key);
+                                setFormData(prev => ({ ...prev, [type.key]: imageUrl }));
+                                await fetchImages();
+                                setShowSectionSelect(null);
+                                setSelectedImage(null);
+                                toast.success(`Imagem aplicada à seção ${type.label}!`);
+                              }}
+                            >
+                              {type.label}
+                            </Button>
+                          ))}
+                          <Button variant="outline" className="mt-2" onClick={e => { e.stopPropagation(); setShowSectionSelect(null); }}>
+                            Cancelar
+                          </Button>
                         </div>
                       </div>
                     )}
-                    <div className="absolute top-2 right-2 flex gap-1">
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="icon" 
-                              className="h-7 w-7 rounded-full bg-poker-black/70 border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewImage(imageUrl);
-                                setPreviewDialogOpen(true);
-                              }}
-                            >
-                              <Eye className="w-3 h-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Visualizar imagem</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button 
-                              variant="outline" 
-                              size="icon" 
-                              className="h-7 w-7 rounded-full bg-poker-black/70 border-red-500/50 text-red-500 hover:bg-red-500/10"
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                console.log('Tentando apagar imagem com URL:', imageUrl);
-                                
-                                // Confirmar a exclusão
-                                if (!confirm('Tem certeza que deseja apagar esta imagem? Esta ação não pode ser desfeita.')) {
-                                  return;
-                                }
-                                
-                                // Procurar a imagem pelo URL exato
-                                const imageObj = imagesList.find(i => i.image_url === imageUrl);
-                                
-                                if (imageObj) {
-                                  console.log('Imagem encontrada para deleção:', imageObj);
-                                  try {
-                                    await deleteImage(imageObj);
-                                    
-                                    // Limpar seleção se a imagem deletada estava selecionada
-                                    if (selectedImage === imageUrl) {
-                                      setSelectedImage(null);
-                                    }
-                                    
-                                    // Atualizar a lista de imagens disponíveis após a deleção
-                                    setAvailableImages(prev => prev.filter(img => img !== imageUrl));
-                                    toast.success('Imagem apagada com sucesso!');
-                                    
-                                    // Recarregar imagens para garantir sincronização
-                                    fetchImages();
-                                  } catch (error) {
-                                    console.error('Erro ao apagar imagem:', error);
-                                    toast.error('Não foi possível apagar a imagem completamente.');
                                   }
                                 } else {
                                   // Se não encontrou no banco, tentar criar um objeto temporário para deleção
@@ -810,6 +840,57 @@ const ImagesSection = () => {
                 </div>
               ) : null}
               
+              {/* Paginação */}
+              {totalPages > 1 && (
+                <div className="flex justify-center mt-6 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => paginate(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 h-8 border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10"
+                  >
+                    Anterior
+                  </Button>
+                  
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    // Lógica para mostrar páginas ao redor da atual
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => paginate(pageNum)}
+                        className={`px-3 py-1 h-8 ${currentPage === pageNum ? 'bg-poker-gold text-poker-black' : 'border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10'}`}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => paginate(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 h-8 border-poker-gold/30 text-poker-gold hover:bg-poker-gold/10"
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
+              
               {/* Painel de aplicação da imagem selecionada */}
               {selectedImage && (
                 <div className="mt-6 p-4 bg-poker-black/50 rounded-lg border border-poker-gold/30">
@@ -819,7 +900,7 @@ const ImagesSection = () => {
                   </h4>
                   <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-1">
-                      <Select onValueChange={(value) => handleChange(value, selectedImage)}>
+                      <Select onValueChange={(value) => setSelectedImageType(value)}>
                         <SelectTrigger className="bg-poker-black border-poker-gold/30 text-white">
                           <SelectValue placeholder="Selecione a seção do site" />
                         </SelectTrigger>
@@ -833,13 +914,22 @@ const ImagesSection = () => {
                       </Select>
                     </div>
                     <Button 
-                      onClick={() => {
-                        const selectedType = Object.keys(formData).find(key => formData[key] === selectedImage);
-                        if (selectedType) {
-                          handleSave(selectedType);
+                      onClick={async () => {
+                        if (selectedImage && selectedImageType) {
+                          await handleSave(selectedImageType);
+                          // Atualizar o formData imediatamente após salvar
+                          setFormData(prev => ({
+                            ...prev,
+                            [selectedImageType]: selectedImage
+                          }));
+                          // Atualizar a lista de imagens após salvar
+                          await fetchImages();
+                          // Limpar seleção e fechar painel de aplicação
+                          setSelectedImage(null);
+                          setSelectedImageType(null);
                         }
                       }}
-                      disabled={!Object.values(formData).includes(selectedImage) || saving}
+                      disabled={!selectedImage || !selectedImageType || saving}
                       className="bg-poker-gold text-poker-black hover:bg-poker-gold-light disabled:opacity-50"
                     >
                       {saving ? (
@@ -908,12 +998,11 @@ const ImagesSection = () => {
                 )}
               </DialogContent>
             </Dialog>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-    </Card>
-  </div>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
   );
-};
+}
 
-export { ImagesSection };
+export default ImagesSection;
